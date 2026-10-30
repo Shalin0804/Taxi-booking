@@ -6,6 +6,7 @@ import Footer from './components/Footer'
 import Home from './pages/Home'
 import { EASE, scrollToTop } from './lib/motion'
 import { AuthProvider } from './lib/auth'
+import { ADMIN_BASE } from './admin/base'
 
 const About = lazy(() => import('./pages/About'))
 const Services = lazy(() => import('./pages/Services'))
@@ -15,9 +16,12 @@ const Corporate = lazy(() => import('./pages/Corporate'))
 const Contact = lazy(() => import('./pages/Contact'))
 const Book = lazy(() => import('./pages/Book'))
 const NotFound = lazy(() => import('./pages/NotFound'))
-const Login = lazy(() => import('./pages/AuthPages').then((mod) => ({ default: mod.Login })))
-const Signup = lazy(() => import('./pages/AuthPages').then((mod) => ({ default: mod.Signup })))
-const Account = lazy(() => import('./pages/Account'))
+const auth = (name) => lazy(() => import('./pages/AuthPages').then((mod) => ({ default: mod[name] })))
+const Login = auth('Login')
+const Register = auth('Register')
+const ForgotPassword = auth('ForgotPassword')
+const ResetPassword = auth('ResetPassword')
+const MyAccount = lazy(() => import('./pages/MyAccount'))
 const AdminApp = lazy(() => import('./admin/AdminApp'))
 
 function AnimatedRoutes() {
@@ -25,7 +29,7 @@ function AnimatedRoutes() {
   return (
     <AnimatePresence mode="wait" onExitComplete={scrollToTop}>
       <m.div
-        key={location.pathname}
+        key={location.pathname.startsWith('/my-account') ? '/my-account' : location.pathname}
         initial={{ opacity: 0 }}
         animate={{ opacity: 1, transition: { duration: 0.6, ease: EASE } }}
         exit={{ opacity: 0, transition: { duration: 0.35, ease: EASE } }}
@@ -42,8 +46,11 @@ function AnimatedRoutes() {
             <Route path="/contact" element={<Contact />} />
             <Route path="/book" element={<Book />} />
             <Route path="/login" element={<Login />} />
-            <Route path="/signup" element={<Signup />} />
-            <Route path="/account" element={<Account />} />
+            <Route path="/register" element={<Register />} />
+            <Route path="/signup" element={<Navigate to="/register" replace />} />
+            <Route path="/forgot-password" element={<ForgotPassword />} />
+            <Route path="/reset-password" element={<ResetPassword />} />
+            <Route path="/my-account/*" element={<MyAccount />} />
             <Route path="*" element={<NotFound />} />
           </Routes>
         </Suspense>
@@ -55,13 +62,11 @@ function AnimatedRoutes() {
 /** The admin dashboard has its own layout; everything else gets the public navbar and footer. */
 function Shell() {
   const { pathname } = useLocation()
-  if (pathname.startsWith('/admin')) {
+  // The admin portal lives only at this unlinked URL, with its own layout and session.
+  if (pathname === ADMIN_BASE || pathname.startsWith(ADMIN_BASE + '/')) {
     return (
       <Suspense fallback={<div className="min-h-screen bg-midnight" />}>
-        <Routes>
-          <Route path="/admin/login" element={<Navigate to="/admin" replace />} />
-          <Route path="/admin/*" element={<AdminApp />} />
-        </Routes>
+        <AdminApp />
       </Suspense>
     )
   }

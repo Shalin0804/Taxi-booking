@@ -1,15 +1,56 @@
 import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { m } from 'framer-motion'
-import { ArrowRight } from 'lucide-react'
+import { ArrowRight, LockKeyhole } from 'lucide-react'
 import LocationInput from './LocationInput'
 import { tripTypes, vehicleOptions } from '../data/site'
 import { EASE } from '../lib/motion'
+import { useAuth } from '../lib/auth'
 
 export const today = () => new Date().toISOString().slice(0, 10)
 
-/** Quick-start booking from the hero. Hands everything to /book, which finishes the flow. */
+const card = 'rounded-[1.75rem] border border-white/12 bg-midnight/55 p-5 text-white shadow-[0_40px_120px_-30px_rgb(0_0_0/0.7)] backdrop-blur-2xl sm:p-7'
+// Where visitors return after signing in or registering.
+const RETURN_TO = encodeURIComponent('/#plan-your-ride')
+
+/**
+ * Plan your ride. Visitors see a locked card with no booking fields; signed-in customers get the form,
+ * which hands off to /book. The API also rejects bookings without a customer session.
+ */
 export default function BookingWidget({ className = '' }) {
+  const { user, ready } = useAuth()
+  if (!ready) return <div id="plan-your-ride" className={`${card} min-h-[22rem] animate-pulse ${className}`} aria-hidden="true" />
+  return user ? <PlanForm className={className} /> : <Locked className={className} />
+}
+
+function Locked({ className }) {
+  return (
+    <section id="plan-your-ride" aria-labelledby="plan-locked-h" className={`${card} scroll-mt-28 ${className}`}>
+      <div className="flex items-center gap-4">
+        <span className="grid h-12 w-12 shrink-0 place-items-center rounded-full bg-gold/15 text-gold ring-1 ring-gold/40"><LockKeyhole className="h-5 w-5" /></span>
+        {/* The route motif, at rest until the customer signs in. */}
+        <span className="flex flex-1 items-center gap-2" aria-hidden="true">
+          <span className="h-2.5 w-2.5 rounded-full bg-gold" />
+          <span className="h-px flex-1 bg-[repeating-linear-gradient(to_right,rgb(200_169_107/0.6)_0_5px,transparent_5px_10px)]" />
+          <span className="h-2.5 w-2.5 rounded-full border-2 border-white/50" />
+        </span>
+      </div>
+      <h2 id="plan-locked-h" className="mt-7 text-[1.9rem] font-semibold leading-tight tracking-tight">Ready to Plan Your Journey?</h2>
+      <p className="mt-3 text-white/70">Login to your TTT Cabs account to access our ride booking experience.</p>
+      <ul className="mt-6 grid gap-2 text-sm text-white/60">
+        <li>Pickup, destination, date and time in one step</li>
+        <li>Your choice of sedan, SUV, luxury or group vehicle</li>
+        <li>Live booking status and driver details in your account</li>
+      </ul>
+      <div className="mt-7 grid gap-3">
+        <Link to={`/login?next=${RETURN_TO}`} className="btn btn-gold w-full">Login to Continue <ArrowRight className="h-4 w-4" /></Link>
+        <Link to={`/register?next=${RETURN_TO}`} className="btn btn-ghost w-full">Create Account</Link>
+      </div>
+    </section>
+  )
+}
+
+function PlanForm({ className }) {
   const nav = useNavigate()
   const [f, setF] = useState({ pickup: '', drop: '', date: '', time: '', trip: tripTypes[0], vehicle: 'No preference' })
   const [errors, setErrors] = useState({})
@@ -27,12 +68,7 @@ export default function BookingWidget({ className = '' }) {
 
   const routed = f.pickup && f.drop
   return (
-    <form
-      onSubmit={submit}
-      noValidate
-      aria-label="Quick booking"
-      className={`rounded-[1.75rem] border border-white/12 bg-midnight/55 p-5 text-white shadow-[0_40px_120px_-30px_rgb(0_0_0/0.7)] backdrop-blur-2xl sm:p-7 ${className}`}
-    >
+    <form id="plan-your-ride" onSubmit={submit} noValidate aria-label="Plan your ride" className={`${card} scroll-mt-28 ${className}`}>
       <div className="mb-5 flex items-center justify-between">
         <h2 className="text-xl font-semibold tracking-tight">Plan your ride</h2>
         <span className="text-xs text-white/50">Takes under a minute</span>

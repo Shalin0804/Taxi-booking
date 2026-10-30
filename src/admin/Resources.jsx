@@ -6,10 +6,13 @@ import { Field } from '../components/forms'
 import { DataTable, Modal, PageHeader, Spinner, inr, useApi, useToast } from './kit'
 import { request } from '../lib/api'
 import { fleet, tripTypes } from '../data/site'
+import { useAdmin } from './adminAuth'
 
 const categories = fleet.map((f) => f.name)
 
-function ResourcePage({ title, sub, path, noun, fields, columns, blank }) {
+function ResourcePage({ title, sub, path, noun, fields, columns, blank, writePerm }) {
+  const { can } = useAdmin()
+  const canWrite = can(writePerm)
   const { data, error, loading, reload } = useApi(path)
   const [editing, setEditing] = useState(null) // null | {} (new) | row
   const [confirm, setConfirm] = useState(null)
@@ -25,11 +28,11 @@ function ResourcePage({ title, sub, path, noun, fields, columns, blank }) {
 
   return (
     <>
-      <PageHeader title={title} sub={sub}>
-        <button onClick={() => setEditing(blank)} className="btn btn-navy !px-4 !py-2.5"><Plus className="h-4 w-4" /> Add {noun.toLowerCase()}</button>
+      <PageHeader title={title} sub={canWrite ? sub : `${sub} Your role can view this list but not change it.`}>
+        {canWrite && <button onClick={() => setEditing(blank)} className="btn btn-navy !px-4 !py-2.5"><Plus className="h-4 w-4" /> Add {noun.toLowerCase()}</button>}
       </PageHeader>
       <DataTable loading={loading} error={error} rows={data?.rows} empty={`No ${title.toLowerCase()} yet. Add the first one.`}
-        columns={[...columns, {
+        columns={!canWrite ? columns : [...columns, {
           key: 'actions', label: '', className: 'text-right whitespace-nowrap',
           render: (r) => (
             <span className="inline-flex gap-1">
@@ -98,7 +101,7 @@ function EditForm({ item, fields, path, noun, onClose, onSaved }) {
 }
 
 export const Vehicles = () => (
-  <ResourcePage title="Vehicles" noun="Vehicle" path="/api/admin/vehicles" sub="Cars you can assign to bookings."
+  <ResourcePage writePerm="fleet:write" title="Vehicles" noun="Vehicle" path="/api/admin/vehicles" sub="Cars you can assign to bookings."
     blank={{}}
     fields={[
       { key: 'category', label: 'Category', list: 'vehicle-categories' },
@@ -118,7 +121,7 @@ export const Vehicles = () => (
 )
 
 export const Drivers = () => (
-  <ResourcePage title="Drivers" noun="Driver" path="/api/admin/drivers" sub="Driver-partners you can assign to bookings."
+  <ResourcePage writePerm="fleet:write" title="Drivers" noun="Driver" path="/api/admin/drivers" sub="Driver-partners you can assign to bookings."
     blank={{}}
     fields={[
       { key: 'name', label: 'Full name' },
@@ -135,7 +138,7 @@ export const Drivers = () => (
 )
 
 export const Pricing = () => (
-  <ResourcePage title="Pricing" noun="Rate" path="/api/admin/pricing" sub="Internal rate card used when quoting fares. Not shown on the website."
+  <ResourcePage writePerm="pricing:write" title="Pricing" noun="Rate" path="/api/admin/pricing" sub="Internal rate card used when quoting fares. Not shown on the website."
     blank={{}}
     fields={[
       { key: 'trip_type', label: 'Trip type', options: tripTypes, placeholder: 'Choose a trip type' },

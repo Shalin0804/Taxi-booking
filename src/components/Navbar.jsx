@@ -113,7 +113,7 @@ export default function Navbar() {
           <a href={company.phoneHref} className="hidden items-center gap-2 text-sm font-medium text-white/80 transition-colors hover:text-white xl:flex">
             <Phone className="h-4 w-4 text-gold" /> {company.phoneDisplay}
           </a>
-          <Link to={user ? '/account' : '/login'} className="hidden items-center gap-2 rounded-full px-3 py-2 text-sm font-medium text-white/80 transition-colors hover:text-white lg:flex">
+          <Link to={user ? '/my-account' : '/login'} className="hidden items-center gap-2 rounded-full px-3 py-2 text-sm font-medium text-white/80 transition-colors hover:text-white lg:flex">
             <CircleUser className="h-4.5 w-4.5" /> {user ? 'My account' : 'Sign in'}
           </Link>
           <Link to="/book" className="btn btn-gold hidden !px-5 !py-2.5 sm:inline-flex">Book Now</Link>
@@ -165,7 +165,7 @@ export default function Navbar() {
             </ul>
             <m.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.5 }} className="mt-auto grid gap-3 pt-10">
               <Link to="/book" className="btn btn-gold w-full">Book your ride</Link>
-              <Link to={user ? '/account' : '/login'} className="btn btn-ghost w-full"><CircleUser className="h-4 w-4" /> {user ? 'My account' : 'Sign in or create account'}</Link>
+              <Link to={user ? '/my-account' : '/login'} className="btn btn-ghost w-full"><CircleUser className="h-4 w-4" /> {user ? 'My account' : 'Sign in or create account'}</Link>
               <a href={company.phoneHref} className="btn btn-ghost w-full"><Phone className="h-4 w-4" /> Call {company.phoneDisplay}</a>
             </m.div>
           </div>

@@ -17,7 +17,8 @@ export const query = async (sql, params = []) => (await pool.query(sql, params))
 
 export async function migrate() {
   const sql = await readFile(new URL('./schema.sql', import.meta.url), 'utf8')
-  for (const stmt of sql.split(';').map((s) => s.replace(/^\s*--.*$/gm, '').trim()).filter(Boolean)) {
+  // Strip comment lines before splitting, so a ';' inside a comment can't break a statement.
+  for (const stmt of sql.replace(/^\s*--.*$/gm, '').split(';').map((s) => s.trim()).filter(Boolean)) {
     await pool.query(stmt)
   }
 }

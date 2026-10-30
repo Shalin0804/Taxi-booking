@@ -1,5 +1,5 @@
 // End-to-end API checks against a real MySQL database. Point DATABASE_URL at a TEST database:
-// it creates users, bookings and enquiries.
+// these tests create users, sessions, bookings and enquiries.
 import { test, before, after } from 'node:test'
 import assert from 'node:assert/strict'
 import bcrypt from 'bcryptjs'
@@ -9,14 +9,59 @@ import { migrate, pool, query } from '../src/db.js'
 let base, server
 const run = Date.now().toString(36)
 const day = (n) => new Date(Date.now() + n * 864e5).toISOString().slice(0, 10)
-const api = async (path, { method = 'GET', body, token } = {}) => {
-  const res = await fetch(base + path, {
-    method,
-    headers: { 'Content-Type': 'application/json', ...(token && { Authorization: `Bearer ${token}` }) },
-    body: body && JSON.stringify(body),
-  })
-  const type = res.headers.get('content-type') || ''
-  return { status: res.status, data: type.includes('json') ? await res.json() : await res.text() }
+let phoneSeq = Number(String(Date.now()).slice(-6))
+const phone = () => `98${String(phoneSeq++).padStart(8, '0')}`
+
+/** A browser-like client with its own cookie jar. */
+function client() {
+  const jar = new Map()
+  const call = async (path, { method = 'GET', body, csrf = true, headers = {} } = {}) => {
+    const res = await fetch(base + path, {
+      method,
+      headers: {
+        ...(body && { 'Content-Type': 'application/json' }),
+        ...(csrf && method !== 'GET' && { 'X-Requested-With': 'ttt' }),
+        ...(jar.size && { Cookie: [...jar].map(([k, v]) => `${k}=${v}`).join('; ') }),
+        ...headers,
+      },
+      body: body && JSON.stringify(body),
+    })
+    for (const c of res.headers.getSetCookie()) {
+      const [kv, ...attrs] = c.split(';')
+      const [k, v] = kv.split('=')
+      if (!v || attrs.some((a) => /expires=Thu, 01 Jan 1970/i.test(a))) jar.delete(k)
+      else jar.set(k, v)
+    }
+    const type = res.headers.get('content-type') || ''
+    return { status: res.status, data: type.includes('json') ? await res.json() : await res.text(), cookies: res.headers.getSetCookie() }
+  }
+  return { call, jar }
+}
+
+const booking = (o = {}) => ({ trip: 'Airport transfer', pickup: 'Pune', drop: 'Pune Airport', date: day(2), time: '09:30', vehicle: 'Sedan', passengers: '2', ...o })
+async function customer(tag) {
+  const c = client()
+  const email = `${tag}-${run}@example.test`
+  const p = phone()
+  const r = await c.call('/api/auth/register', { method: 'POST', body: { name: `Cust ${tag}`, email, phone: p, password: 'goodpassword' } })
+  assert.equal(r.status, 201, JSON.stringify(r.data))
+  return { ...c, email, phone: p, id: r.data.user.id }
+}
+async function staff(role) {
+  const email = `${role.toLowerCase()}-${run}@example.test`
+  await query('INSERT INTO users (name, email, password_hash, role) VALUES (?, ?, ?, ?)', [role, email, await bcrypt.hash('staffpassword1', 4), role])
+  const c = client()
+  const r = await c.call('/api/admin/auth/login', { method: 'POST', body: { email, password: 'staffpassword1' } })
+  assert.equal(r.status, 200, `${role} login: ${JSON.stringify(r.data)}`)
+  return { ...c, email }
+}
+
+/** Signs in a staff account created earlier by staff(). */
+async function signIn(role) {
+  const c = client()
+  const r = await c.call('/api/admin/auth/login', { method: 'POST', body: { email: `${role.toLowerCase()}-${run}@example.test`, password: 'staffpassword1' } })
+  assert.equal(r.status, 200)
+  return c
 }
 
 before(async () => {
@@ -26,96 +71,183 @@ before(async () => {
 })
 after(async () => { server.close(); await pool.end() })
 
-const booking = (o = {}) => ({ trip: 'Airport transfer', pickup: 'Pune', drop: 'Pune Airport', date: day(2), time: '09:30',
-  vehicle: 'Sedan', passengers: '2', name: 'Test Customer', phone: '9876543210', ...o })
-
-test('signup, duplicate, login and me', async () => {
-  const email = `cust-${run}@example.test`
-  const bad = await api('/api/auth/signup', { method: 'POST', body: { name: 'A', email: 'nope', phone: '1', password: 'short' } })
+test('customer register, login by email or phone, httpOnly cookie, logout', async () => {
+  const bad = await client().call('/api/auth/register', { method: 'POST', body: { name: 'A', email: 'nope', phone: '1', password: 'short' } })
   assert.equal(bad.status, 400)
-  assert.deepEqual(Object.keys(bad.data.fields).sort(), ['email', 'name', 'password', 'phone'])
+  const c = await customer('reg')
+  const dup = await client().call('/api/auth/register', { method: 'POST', body: { name: 'Dup', email: c.email, phone: phone(), password: 'goodpassword' } })
+  assert.equal(dup.status, 409)
 
-  const ok = await api('/api/auth/signup', { method: 'POST', body: { name: 'Test Customer', email, phone: '9876543210', password: 'goodpassword' } })
-  assert.equal(ok.status, 201)
-  assert.equal(ok.data.user.role, 'customer')
-  assert.equal(ok.data.user.password_hash, undefined)
-
-  assert.equal((await api('/api/auth/signup', { method: 'POST', body: { name: 'X Y', email, phone: '9876543210', password: 'goodpassword' } })).status, 409)
-  assert.equal((await api('/api/auth/login', { method: 'POST', body: { email, password: 'wrongpassword' } })).status, 401)
-  const login = await api('/api/auth/login', { method: 'POST', body: { email: email.toUpperCase(), password: 'goodpassword' } })
+  const byPhone = client()
+  const login = await byPhone.call('/api/auth/login', { method: 'POST', body: { identifier: `+91 ${c.phone}`, password: 'goodpassword', remember: true } })
   assert.equal(login.status, 200)
-  assert.equal((await api('/api/auth/me', { token: login.data.token })).data.user.email, email)
-  assert.equal((await api('/api/auth/me', { token: 'garbage' })).status, 401)
+  const cookie = login.cookies.find((x) => x.startsWith('ttt_customer='))
+  assert.match(cookie, /HttpOnly/i)
+  assert.match(cookie, /SameSite=Lax/i)
+  assert.match(cookie, /Max-Age=/i, 'remember me sets a persistent cookie')
+  assert.equal((await byPhone.call('/api/auth/me')).data.user.email, c.email)
+
+  const wrong = await client().call('/api/auth/login', { method: 'POST', body: { identifier: c.email, password: 'nope-nope' } })
+  assert.equal(wrong.status, 401)
+  assert.equal((await client().call('/api/auth/login', { method: 'POST', body: { identifier: 'ghost@example.test', password: 'nope-nope' } })).data.error, wrong.data.error, 'same message for unknown account')
+
+  await byPhone.call('/api/auth/logout', { method: 'POST' })
+  assert.equal((await byPhone.call('/api/auth/me')).status, 401, 'logout ends the session')
 })
 
-test('booking validation and guest booking', async () => {
-  const past = await api('/api/bookings', { method: 'POST', body: booking({ date: day(-1), phone: '123' }) })
+test('CSRF: state-changing requests without the header or from a foreign origin are rejected', async () => {
+  assert.equal((await client().call('/api/auth/login', { method: 'POST', csrf: false, body: { identifier: 'x@y.co', password: 'x' } })).status, 403)
+  assert.equal((await client().call('/api/auth/login', { method: 'POST', headers: { Origin: 'https://evil.example' }, body: { identifier: 'x@y.co', password: 'x' } })).status, 403)
+})
+
+test('bookings require a customer session; ownership comes from the session', async () => {
+  assert.equal((await client().call('/api/bookings', { method: 'POST', body: booking() })).status, 401)
+  assert.equal((await client().call('/api/bookings')).status, 401)
+  assert.equal((await client().call('/api/bookings/TTT-00000000')).status, 401)
+
+  const a = await customer('owner')
+  const b = await customer('other')
+  const past = await a.call('/api/bookings', { method: 'POST', body: booking({ date: day(-1) }) })
   assert.equal(past.status, 400)
-  assert.ok(past.data.fields.date && past.data.fields.phone)
-  assert.equal((await api('/api/bookings', { method: 'POST', body: booking({ trip: 'Teleport' }) })).status, 400)
-  const ok = await api('/api/bookings', { method: 'POST', body: booking() })
-  assert.equal(ok.status, 201)
-  assert.match(ok.data.reference, /^TTT-[0-9A-F]{8}$/)
+  // A user_id in the body must be ignored.
+  const made = await a.call('/api/bookings', { method: 'POST', body: booking({ user_id: b.id, userId: b.id }) })
+  assert.equal(made.status, 201)
+  const ref = made.data.reference
+  const [row] = await query('SELECT user_id, name, phone FROM bookings WHERE reference = ?', [ref])
+  assert.equal(row.user_id, a.id)
+  assert.equal(row.name, 'Cust owner', 'passenger details default to the profile')
+
+  assert.equal((await a.call('/api/bookings')).data.rows.length, 1)
+  assert.equal((await b.call('/api/bookings')).data.rows.length, 0)
+  assert.equal((await a.call(`/api/bookings/${ref}`)).status, 200)
+  assert.equal((await b.call(`/api/bookings/${ref}`)).status, 403, 'other customer gets 403')
+  assert.equal((await b.call(`/api/bookings/${ref}/cancel`, { method: 'PATCH' })).status, 403)
+  assert.equal((await a.call('/api/bookings/TTT-FFFFFFFF')).status, 404)
+
+  // Staff accounts can't book through the customer API, and customer cookies can't reach admin APIs.
+  assert.equal((await a.call('/api/admin/bookings')).status, 401)
+  assert.equal((await a.call('/api/admin/auth/me')).status, 401)
+  const cancel = await a.call(`/api/bookings/${ref}/cancel`, { method: 'PATCH' })
+  assert.equal(cancel.data.outcome, 'cancelled')
 })
 
-test('customer flow: book, admin confirms and assigns, customer sees it; roles enforced', async () => {
-  const cust = (await api('/api/auth/signup', { method: 'POST', body: { name: 'Flow User', email: `flow-${run}@example.test`, phone: '9876501234', password: 'goodpassword' } })).data
-  const { reference } = (await api('/api/bookings', { method: 'POST', token: cust.token, body: booking({ trip: 'Outstation round trip', drop: 'Mumbai', returnDate: day(4) }) })).data
+test('admin login is separate: customers cannot use it, staff cannot use customer login', async () => {
+  const c = await customer('notadmin')
+  assert.equal((await client().call('/api/admin/auth/login', { method: 'POST', body: { email: c.email, password: 'goodpassword' } })).status, 401)
+  const sa = await staff('SUPER_ADMIN')
+  assert.equal((await client().call('/api/auth/login', { method: 'POST', body: { identifier: sa.email, password: 'staffpassword1' } })).status, 401)
+  const me = (await sa.call('/api/admin/auth/me')).data.user
+  assert.ok(me.permissions.includes('users:manage'))
+  // An admin session doesn't count as a customer session.
+  assert.equal((await sa.call('/api/bookings')).status, 401)
+  await sa.call('/api/admin/auth/logout', { method: 'POST' })
+  assert.equal((await sa.call('/api/admin/auth/me')).status, 401)
+})
 
-  // Customers can't reach admin endpoints; anonymous users get 401.
-  assert.equal((await api('/api/admin/bookings', { token: cust.token })).status, 403)
-  assert.equal((await api('/api/admin/bookings')).status, 401)
+test('role permissions are enforced on the server', async () => {
+  const fleet = await staff('FLEET_MANAGER')
+  const support = await staff('SUPPORT_STAFF')
+  const bm = await staff('BOOKING_MANAGER')
+  const adm = await staff('ADMIN')
 
-  // Test-only admin, created directly in the test database.
-  const email = `admin-${run}@example.test`
-  await query("INSERT INTO users (name, email, password_hash, role) VALUES ('Test Admin', ?, ?, 'admin')", [email, await bcrypt.hash('adminpassword1', 4)])
-  const adm = (await api('/api/auth/login', { method: 'POST', body: { email, password: 'adminpassword1' } })).data.token
+  assert.equal((await fleet.call('/api/admin/vehicles', { method: 'POST', body: { category: 'SUV', model: 'Innova', registration: `MH${run}`, status: 'active' } })).status, 201)
+  assert.equal((await fleet.call('/api/admin/bookings')).status, 403)
+  assert.equal((await fleet.call('/api/admin/enquiries')).status, 403)
+  assert.equal((await support.call('/api/admin/enquiries')).status, 200)
+  assert.equal((await support.call('/api/admin/bookings')).status, 200, 'support can read bookings')
+  assert.equal((await support.call('/api/admin/bookings/1', { method: 'PATCH', body: { status: 'confirmed' } })).status, 403, 'but not change them')
+  assert.equal((await support.call('/api/admin/vehicles', { method: 'POST', body: {} })).status, 403)
+  assert.equal((await bm.call('/api/admin/pricing', { method: 'POST', body: { trip_type: 'Airport transfer', vehicle_category: 'Sedan', base_fare: 1 } })).status, 403)
+  assert.equal((await bm.call('/api/admin/bookings.csv')).status, 200)
+  assert.equal((await adm.call('/api/admin/users')).status, 403, 'only SUPER_ADMIN manages the team')
+  assert.equal((await adm.call('/api/admin/audit')).status, 403)
+  assert.equal((await client().call('/api/admin/stats')).status, 401)
+})
 
-  const driver = (await api('/api/admin/drivers', { method: 'POST', token: adm, body: { name: 'Test Driver', phone: '9123456780', status: 'available' } })).data.row
-  const vehicle = (await api('/api/admin/vehicles', { method: 'POST', token: adm, body: { category: 'SUV', model: 'Test Model', registration: `mh12${run}`, seats: 7, status: 'active' } })).data.row
-  assert.equal(vehicle.registration, `MH12${run}`.toUpperCase())
-  assert.equal((await api('/api/admin/vehicles', { method: 'POST', token: adm, body: { category: 'SUV', model: 'Dup', registration: `MH12${run}`, status: 'active' } })).status, 409)
+test('full flow: customer books, booking manager assigns, customer sees it; audit log records it', async () => {
+  const cust = await customer('flow')
+  const { reference } = (await cust.call('/api/bookings', { method: 'POST', body: booking({ trip: 'Outstation round trip', drop: 'Mumbai', returnDate: day(4) }) })).data
+  const fleet = await signIn('FLEET_MANAGER')
+  const bm = await signIn('BOOKING_MANAGER')
 
-  const found = (await api(`/api/admin/bookings?q=${reference}`, { token: adm })).data
+  const driver = (await fleet.call('/api/admin/drivers', { method: 'POST', body: { name: 'Test Driver', phone: '9123456780', status: 'available' } })).data.row
+  const vehicle = (await fleet.call('/api/admin/vehicles', { method: 'POST', body: { category: 'SUV', model: 'Flow Model', registration: `FL${run}`, status: 'active' } })).data.row
+  const found = (await bm.call(`/api/admin/bookings?q=${reference}`)).data
   assert.equal(found.total, 1)
-  const id = found.rows[0].id
-  const upd = await api(`/api/admin/bookings/${id}`, { method: 'PATCH', token: adm, body: { status: 'assigned', driver_id: driver.id, vehicle_id: vehicle.id, fare: 4500 } })
+  const upd = await bm.call(`/api/admin/bookings/${found.rows[0].id}`, { method: 'PATCH', body: { status: 'assigned', driver_id: driver.id, vehicle_id: vehicle.id, fare: 4500 } })
   assert.equal(upd.status, 200)
-  assert.equal(upd.data.row.driver_name, 'Test Driver')
-  assert.equal((await api(`/api/admin/bookings/${id}`, { method: 'PATCH', token: adm, body: { driver_id: 999999 } })).status, 400)
 
-  const mine = (await api('/api/my/bookings', { token: cust.token })).data.rows
-  assert.equal(mine.length, 1)
-  assert.equal(mine[0].status, 'assigned')
-  assert.equal(mine[0].driver_name, 'Test Driver')
-  assert.equal(mine[0].vehicle_model, 'Test Model')
-  // Assigned trips can't be cancelled online.
-  assert.equal((await api(`/api/my/bookings/${reference}/cancel`, { method: 'POST', token: cust.token })).status, 409)
+  const mine = (await cust.call(`/api/bookings/${reference}`)).data.row
+  assert.equal(mine.status, 'assigned')
+  assert.equal(mine.driver_name, 'Test Driver')
+  // Assigned trips become a cancellation request instead of cancelling outright.
+  assert.equal((await cust.call(`/api/bookings/${reference}/cancel`, { method: 'PATCH' })).data.outcome, 'requested')
+  assert.equal((await bm.call('/api/admin/bookings?cancel=1')).data.rows.some((r) => r.reference === reference), true)
 
-  const stats = (await api('/api/admin/stats', { token: adm })).data
-  assert.ok(stats.counts.bookings >= 2)
-
-  const csv = await api(`/api/admin/bookings.csv?q=${reference}`, { token: adm })
-  assert.equal(csv.status, 200)
-  assert.match(csv.data, /reference,status,trip_type/)
-  assert.ok(csv.data.includes(reference))
-
-  // Pricing is admin-only: staff can't edit it.
-  const staffEmail = `staff-${run}@example.test`
-  assert.equal((await api('/api/admin/users', { method: 'POST', token: adm, body: { name: 'Test Staff', email: staffEmail, password: 'staffpassword1', role: 'staff' } })).status, 201)
-  const stf = (await api('/api/auth/login', { method: 'POST', body: { email: staffEmail, password: 'staffpassword1' } })).data.token
-  assert.equal((await api('/api/admin/pricing', { token: stf })).status, 403)
-  assert.equal((await api('/api/admin/bookings', { token: stf })).status, 200)
-  const price = await api('/api/admin/pricing', { method: 'POST', token: adm, body: { trip_type: 'Airport transfer', vehicle_category: `Sedan-${run}`, base_fare: 999 } })
-  assert.equal(price.status, 201)
+  const [log] = await query("SELECT action FROM audit_logs WHERE action = 'booking.update' AND entity_id = ?", [String(found.rows[0].id)])
+  assert.ok(log, 'admin change is audit-logged')
 })
 
-test('enquiries and CSV formula escaping', async () => {
-  assert.equal((await api('/api/enquiries', { method: 'POST', body: { type: 'corporate', contact: 'A B', email: 'a@b.co', phone: '9876543210', requirements: 'short' } })).status, 400)
-  assert.equal((await api('/api/enquiries', { method: 'POST', body: { type: 'corporate', company: 'Acme', contact: 'A B', email: 'a@b.co', phone: '9876543210', employees: '26–100', requirements: 'Daily commute for 40 staff' } })).status, 201)
-  const evil = (await api('/api/bookings', { method: 'POST', body: booking({ name: '=HYPERLINK("x")' }) })).data.reference
-  const email = `admin-${run}@example.test`
-  const adm = (await api('/api/auth/login', { method: 'POST', body: { email, password: 'adminpassword1' } })).data.token
-  const csv = (await api(`/api/admin/bookings.csv?q=${evil}`, { token: adm })).data
+test('team management: SUPER_ADMIN creates staff; disabling revokes their sessions', async () => {
+  const sa = client()
+  await sa.call('/api/admin/auth/login', { method: 'POST', body: { email: `super_admin-${run}@example.test`, password: 'staffpassword1' } })
+  const email = `newstaff-${run}@example.test`
+  const created = await sa.call('/api/admin/users', { method: 'POST', body: { name: 'New Staff', email, password: 'newstaffpass1', role: 'SUPPORT_STAFF' } })
+  assert.equal(created.status, 201)
+  assert.equal((await sa.call('/api/admin/users', { method: 'POST', body: { name: 'X', email: `c-${run}@x.test`, password: 'newstaffpass1', role: 'CUSTOMER' } })).status, 400)
+  const s = client()
+  assert.equal((await s.call('/api/admin/auth/login', { method: 'POST', body: { email, password: 'newstaffpass1' } })).status, 200)
+  await sa.call(`/api/admin/users/${created.data.row.id}`, { method: 'PATCH', body: { status: 'disabled' } })
+  assert.equal((await s.call('/api/admin/auth/me')).status, 401, 'disabled staff lose access immediately')
+  assert.equal((await s.call('/api/admin/auth/login', { method: 'POST', body: { email, password: 'newstaffpass1' } })).status, 401)
+})
+
+test('expired and revoked sessions are rejected', async () => {
+  const c = await customer('expiry')
+  assert.equal((await c.call('/api/auth/me')).status, 200)
+  await query("UPDATE sessions SET expires_at = UTC_TIMESTAMP() - INTERVAL 1 MINUTE WHERE user_id = ? AND kind = 'customer'", [c.id])
+  assert.equal((await c.call('/api/auth/me')).status, 401)
+  // A tampered token is rejected too.
+  const t = client()
+  t.jar.set('ttt_customer', 'eyJhbGciOiJIUzI1NiJ9.eyJzaWQiOiJ4Iiwic3ViIjoxfQ.forged')
+  assert.equal((await t.call('/api/auth/me')).status, 401)
+})
+
+test('account lockout after repeated failures', async () => {
+  const c = await customer('lock')
+  const bad = () => client().call('/api/auth/login', { method: 'POST', body: { identifier: c.email, password: 'wrong-password' } })
+  for (let i = 0; i < 5; i++) assert.equal((await bad()).status, 401)
+  const locked = await client().call('/api/auth/login', { method: 'POST', body: { identifier: c.email, password: 'goodpassword' } })
+  assert.equal(locked.status, 429, 'correct password is refused while locked')
+})
+
+test('password reset: single-use, expiring, revokes sessions', async () => {
+  const c = await customer('reset')
+  const logged = []
+  const orig = console.log
+  console.log = (...a) => logged.push(a.join(' '))
+  const forgot = await client().call('/api/auth/forgot-password', { method: 'POST', body: { email: c.email } })
+  const ghost = await client().call('/api/auth/forgot-password', { method: 'POST', body: { email: 'ghost@example.test' } })
+  console.log = orig
+  assert.equal(forgot.status, 200)
+  assert.deepEqual(ghost.data, forgot.data, 'same response for unknown email')
+  const token = logged.join('\n').match(/token=([0-9a-f]{64})/)[1]
+
+  assert.equal((await client().call('/api/auth/reset-password', { method: 'POST', body: { token, password: 'brandnewpass' } })).status, 200)
+  assert.equal((await client().call('/api/auth/reset-password', { method: 'POST', body: { token, password: 'anotherpass1' } })).status, 400, 'token is single-use')
+  assert.equal((await c.call('/api/auth/me')).status, 401, 'existing sessions revoked')
+  assert.equal((await client().call('/api/auth/login', { method: 'POST', body: { identifier: c.email, password: 'brandnewpass' } })).status, 200)
+  await query('UPDATE password_resets SET expires_at = UTC_TIMESTAMP() - INTERVAL 1 MINUTE')
+  assert.equal((await client().call('/api/auth/reset-password', { method: 'POST', body: { token: 'f'.repeat(64), password: 'whatever12' } })).status, 400)
+})
+
+test('public enquiries and CSV formula escaping', async () => {
+  assert.equal((await client().call('/api/enquiries', { method: 'POST', body: { type: 'corporate', company: 'Acme', contact: 'A B', email: 'a@b.co', phone: '9876543210', requirements: 'Daily commute for 40 staff' } })).status, 201)
+  const c = await customer('csv')
+  await c.call('/api/me', { method: 'PATCH', body: { name: '=HYPERLINK("x")', phone: c.phone } })
+  const ref = (await c.call('/api/bookings', { method: 'POST', body: booking() })).data.reference
+  const bm = client()
+  await bm.call('/api/admin/auth/login', { method: 'POST', body: { email: `booking_manager-${run}@example.test`, password: 'staffpassword1' } })
+  const csv = (await bm.call(`/api/admin/bookings.csv?q=${ref}`)).data
   assert.ok(csv.includes(`"'=HYPERLINK(""x"")"`), 'formula cell must be neutralised')
 })

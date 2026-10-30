@@ -24,7 +24,9 @@ Premium redesign of https://tttcabs.com (Tahshildar Tour & Travels): a React SPA
 ## Rules
 
 1. **Verified content only.** Every business fact (services, fleet categories, cities, phone, email, socials) lives in `src/data/site.js` and comes from the live site. Do not invent vehicles, models, capacities, prices, statistics, reviews or an address. The live About page's "32K bookings / 25+ years / 22 countries" are template filler ("Established in ," is blank), so they are deliberately omitted.
-2. **Never fake a confirmation.** Forms submit through `src/lib/api.js`. With no `VITE_API_URL` set, the UI shows a hand-off (WhatsApp, email or call) and says nothing was sent.
+2. **Never fake a confirmation.** Forms submit through `src/lib/api.js`. If a request fails, the UI says nothing was sent and offers WhatsApp, email or a call.
+7. **Booking requires a customer login**, and the server enforces this. "Plan your ride" renders no fields for visitors; `/book` and `/my-account` are wrapped in `RequireCustomer`, which redirects to `/login?next=…` (only same-site paths are accepted, via `safeNext`).
+8. **The admin portal is only at `/secure-admin-portal`** (`src/admin/base.js`). Never link it from the public site, and never add an admin sign-up page. `/admin` is a normal 404.
 3. **Page meta** lives in `src/data/seo.js` (used at runtime and at build). For a new route, add it there, to `public/sitemap.xml` and to `App.jsx`.
 4. **Scroll effects** are declarative data attributes handled by `useScrollFx` (wrap page content in `<Page>`): `data-reveal`, `data-stagger` (on a parent), `data-mask`, `data-parallax="0.1"`, `data-counter="11"`. Initial hidden states apply only under `html.fx`, which is set when motion is allowed, so reduced-motion and no-JS visitors always see content.
 5. **Images** are WebP in `public/images/<name>-800.webp` / `-1400.webp` (hero: 720/1200/2000), rendered via `<Picture name>`. Photos are from Unsplash (free licence), chosen to show Indian vehicles and locations. Note that `hero` is mirrored.
@@ -33,13 +35,22 @@ Premium redesign of https://tttcabs.com (Tahshildar Tour & Travels): a React SPA
 ## Backend (`server/`)
 
 - Express 5 + mysql2, which also works with TiDB. The schema is in `server/src/schema.sql` and is applied idempotently on every boot.
-- Auth: bcrypt hashes and a JWT bearer token (7 days). The token is stored in localStorage under `ttt_token`. Roles are `customer`, `staff` and `admin`. Staff manage bookings, fleet, drivers and enquiries. Only admins manage pricing and the team.
-- The frontend reads the API origin from `VITE_API_URL`. If it is unset, forms fall back to the WhatsApp/email hand-off, and login and admin say the API isn't connected.
+- No ORM (Prisma was considered and skipped). Plain SQL with `?` placeholders keeps the queries visible and works the same on TiDB.
+- Auth (`server/src/auth.js`) has two separate contexts in one `users` table:
+  - Customers use the `ttt_customer` cookie and `/api/auth/*` + `/api/bookings*` + `/api/me*`, with role `CUSTOMER` only.
+  - Staff use the `ttt_admin` cookie and `/api/admin/*`, with roles `SUPER_ADMIN`, `ADMIN`, `BOOKING_MANAGER`, `FLEET_MANAGER` and `SUPPORT_STAFF`.
+  - Cookies are httpOnly, SameSite=Lax, and Secure in production. Each JWT points at a `sessions` row, so logout, disabling an account and password changes take effect immediately. The role is re-read on every request.
+- Permissions are the `P` map in `auth.js`; every admin route uses `requireAdmin('<perm>')`. The UI hides what the API would refuse, using `user.permissions` from `/api/admin/auth/me`.
+- CSRF: every non-GET request must send `X-Requested-With: ttt` (`request()` adds it), and a foreign `Origin` is rejected.
+- Lockout: 5 failed logins lock the account for 15 minutes (`login.js`), on top of the per-IP rate limits. Password reset uses a single-use, SHA-256-hashed token that expires in 30 minutes. Emails go through `SMTP_URL`, or to the server log if it's unset.
+- Admin changes are written to `audit_logs` via `audit(req, ...)`. SUPER_ADMIN sees them under Team & roles → Audit log.
+- The frontend calls `/api` on its own origin: Vite proxies it in dev and preview, and `vercel.json` rewrites it to Render. `VITE_API_URL` is an optional override.
+- There are no migrations yet: `schema.sql` only creates missing tables. Changing an existing table needs an `ALTER` (or a fresh database, before launch).
 - Commands (run in `server/`): `npm run dev`, `npm test` (end-to-end against `DATABASE_URL`; **use a test DB**), `npm run create-admin` (credentials come from env, never from code).
 - All SQL uses `?` placeholders. Table and column names come only from code constants and whitelists.
 - The CSV export neutralises cells that start with `= + - @`, so they can't run as Excel formulas.
 - Admin UI is in `src/admin/`. It has its own layout, with no public navbar or footer. `ResourcePage` in `Resources.jsx` drives vehicles, drivers and pricing from a field config.
-- Not built yet: website CMS, notifications (email/SMS), settings page, password reset (customers call support).
+- Not built yet: website CMS, booking notifications (email/SMS), online payments (Payment history lists fares for completed trips).
 - Deployment: see DEPLOY.md (Vercel, Render and TiDB Cloud).
 
 ## Open items for the client

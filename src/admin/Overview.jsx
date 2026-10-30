@@ -4,23 +4,27 @@ import { CalendarDays, Car, Clock, Inbox, UserRound, Users } from 'lucide-react'
 import StatusBadge, { statusLabel } from '../components/StatusBadge'
 import { DataTable, PageHeader, date, useApi } from './kit'
 import { EASE } from '../lib/motion'
+import { ADMIN_BASE as A } from './base'
+import { useAdmin } from './adminAuth'
 
 export default function Overview() {
   const { data, error, loading } = useApi('/api/admin/stats')
+  const { can } = useAdmin()
   const c = data?.counts
   const kpis = [
-    { label: 'Pending bookings', value: c?.pending, icon: Clock, to: '/admin/bookings?status=pending', accent: true },
-    { label: 'Pickups today', value: c?.today, icon: CalendarDays, to: '/admin/bookings' },
-    { label: 'New enquiries', value: c?.new_enquiries, icon: Inbox, to: '/admin/enquiries' },
-    { label: 'Total bookings', value: c?.bookings, icon: CalendarDays, to: '/admin/bookings' },
-    { label: 'Customers', value: c?.customers, icon: Users, to: '/admin/customers' },
-    { label: 'Active vehicles', value: c?.active_vehicles, icon: Car, to: '/admin/vehicles' },
-    { label: 'Available drivers', value: c?.available_drivers, icon: UserRound, to: '/admin/drivers' },
+    { label: 'Pending bookings', value: c?.pending, icon: Clock, to: `${A}/bookings?status=pending`, accent: true },
+    { label: 'Cancellation requests', value: c?.cancel_requests, icon: Clock, to: `${A}/bookings?cancel=1` },
+    { label: 'Pickups today', value: c?.today, icon: CalendarDays, to: `${A}/bookings` },
+    { label: 'New enquiries', value: c?.new_enquiries, icon: Inbox, to: `${A}/corporate-enquiries` },
+    { label: 'Total bookings', value: c?.bookings, icon: CalendarDays, to: `${A}/bookings` },
+    { label: 'Customers', value: c?.customers, icon: Users, to: `${A}/customers` },
+    { label: 'Active vehicles', value: c?.active_vehicles, icon: Car, to: `${A}/vehicles` },
+    { label: 'Available drivers', value: c?.available_drivers, icon: UserRound, to: `${A}/drivers` },
   ]
 
   return (
     <>
-      <PageHeader title="Overview" sub="Live figures from the bookings database." />
+      <PageHeader title="Dashboard" sub="Live figures from the bookings database." />
       {error && <p className="mb-6 rounded-xl bg-red-50 p-4 text-sm text-red-700" role="alert">{error}</p>}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-4">
         {kpis.map((k, i) => (
@@ -50,7 +54,7 @@ export default function Overview() {
       <section className="mt-6">
         <div className="mb-3 flex items-center justify-between">
           <h2 className="font-semibold">Latest bookings</h2>
-          <Link to="/admin/bookings" className="text-sm font-semibold text-electric">View all</Link>
+          {can('bookings:read') && <Link to={`${A}/bookings`} className="text-sm font-semibold text-electric">View all</Link>}
         </div>
         <DataTable loading={loading} rows={data?.recent} empty="No bookings yet. They appear here as soon as customers book."
           columns={[

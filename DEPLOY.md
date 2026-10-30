@@ -6,77 +6,71 @@ Three pieces, set up in this order:
 |---|---|---|
 | MySQL database | `server/src/schema.sql` (applied automatically) | TiDB Cloud |
 | API (Express) | `server/` | Render |
-| Website + admin (React) | repo root | Vercel |
+| Website, customer accounts, admin portal (React) | repo root | Vercel |
+
+The browser only ever talks to the Vercel domain. `vercel.json` forwards `/api/*` to Render, so the httpOnly session cookies are first-party and work in every browser.
 
 ## 1. TiDB Cloud (database)
 
-1. Sign in at https://tidbcloud.com and create a **Starter (Serverless)** cluster. Pick the region closest to your customers (Mumbai `ap-south-1` if it's offered).
-2. Open the cluster, then click **Connect**:
-   - Connect with: **General**. Operating system: any.
-   - Click **Generate password** and copy it. TiDB shows it only once.
-3. Click **SQL Editor** and create the database:
-   ```sql
-   CREATE DATABASE tttcabs;
-   ```
-4. Build the connection string from the Connect dialog (host, port `4000`, user):
-   ```
-   mysql://<USER>:<PASSWORD>@<HOST>:4000/tttcabs
-   ```
-   The user looks like `xxxxxxxx.root`. If the password has special characters (`@ : / ? #`), URL-encode them.
+1. Go to https://tidbcloud.com and create a **Starter (Serverless)** cluster in the region nearest your customers (Mumbai if it's offered).
+2. Click **Connect**, then **Generate password**, and copy it. TiDB shows it only once.
+3. In the **SQL Editor**, run `CREATE DATABASE tttcabs;`
+4. Your connection string is `mysql://<USER>:<PASSWORD>@<HOST>:4000/tttcabs`. URL-encode any `@ : / ? #` in the password.
 
-You don't need to create tables. The API creates them on its first start.
+The API creates every table on its first start.
 
 ## 2. Render (API)
 
-1. Sign in at https://render.com, then choose **New → Blueprint** and connect the GitHub repo. Render reads `render.yaml`.
-   Or set it up by hand: **New → Web Service**, with Root Directory `server`, Build `npm ci`, Start `npm start` and Health check `/api/health`.
-2. Set these environment variables:
+1. Go to https://render.com, choose **New → Blueprint**, and pick the GitHub repo. Render reads `render.yaml`.
+2. Fill in the variables it asks for:
    | Key | Value |
    |---|---|
-   | `DATABASE_URL` | the TiDB string from step 1 |
-   | `DB_SSL` | `true` (TiDB requires TLS) |
-   | `JWT_SECRET` | the Blueprint generates it. If you set up by hand, run `node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"` |
-   | `CORS_ORIGIN` | your Vercel URL, e.g. `https://taxi-booking.vercel.app` (use a comma to list several) |
-   | `NODE_VERSION` | `22` |
-3. Deploy. Then open `https://<your-service>.onrender.com/api/health`; it should return `{"ok":true}`.
-4. Create the first admin: in the Render dashboard, open **Shell** and run
+   | `DATABASE_URL` | the TiDB string |
+   | `APP_URL` | your Vercel URL, e.g. `https://taxi-booking.vercel.app` |
+   | `CORS_ORIGIN` | the same Vercel URL |
+   | `SMTP_URL` | optional, e.g. `smtps://you%40gmail.com:APP_PASSWORD@smtp.gmail.com:465`. Without it, password-reset links only appear in the Render log. |
+   | `MAIL_FROM` | optional, e.g. `TTT Cabs <no-reply@tttcabs.com>` |
+
+   `JWT_SECRET` is generated for you. `NODE_ENV=production`, `DB_SSL=true` and `TRUST_PROXY=2` are already set.
+3. **The service name must be `tttcabs-api`**, so its URL is `https://tttcabs-api.onrender.com`, the address `vercel.json` forwards to. If Render gives you a different URL, change it in `vercel.json` and push.
+4. Check `https://tttcabs-api.onrender.com/api/health`. It should return `{"ok":true}`.
+5. **Create the first SUPER_ADMIN.** There is no admin sign-up page. Run this once, either in the Render **Shell** (paid plans) or on your computer from `server/` with `DATABASE_URL` and `DB_SSL=true` in `server/.env`:
    ```
-   ADMIN_EMAIL=you@yourdomain.com ADMIN_PASSWORD='a-long-password' ADMIN_NAME='Your Name' npm run create-admin
+   ADMIN_EMAIL=you@yourdomain.com ADMIN_PASSWORD='a-long-unique-password' ADMIN_NAME='Your Name' npm run create-admin
    ```
-   (The free plan has no Shell. Run the same command on your own computer from the `server/` folder, with `DATABASE_URL` and `DB_SSL=true` set in `server/.env`.)
+   Then add other staff from the portal's **Team & roles** page.
 
-Free Render services sleep after 15 minutes without traffic, so the first request after that takes about 30 seconds. A paid instance stays awake.
+## 3. Vercel (website)
 
-## 3. Vercel (website and admin)
-
-1. Sign in at https://vercel.com, then choose **Add New → Project** and import the GitHub repo.
-2. Vercel detects Vite from `vercel.json`, so leave the Root Directory as the repo root.
-3. Add this environment variable (Production and Preview):
-   | Key | Value |
-   |---|---|
-   | `VITE_API_URL` | `https://<your-service>.onrender.com` (no trailing slash) |
-4. Deploy. Then go back to Render and make sure `CORS_ORIGIN` exactly matches the Vercel URL. Redeploy the API if you changed it.
-5. Optional custom domain: in Vercel, open **Settings → Domains** and add `tttcabs.com`, then update DNS as Vercel shows. Add the new domain to `CORS_ORIGIN` too.
+1. Go to https://vercel.com, choose **Add New → Project**, and import the repo. Keep the Root Directory as the repo root.
+2. You don't need any environment variables, because `/api` is forwarded by `vercel.json`.
+3. Deploy. If the URL differs from the `APP_URL` / `CORS_ORIGIN` you gave Render, update them there.
 
 ## 4. Check it works
 
-1. Open the site, create an account at `/signup`, and make a booking.
-2. Sign in at `/admin/login` with the admin from step 2.4. The booking appears under **Bookings**.
-3. Set the booking to *Driver assigned* with a driver and a vehicle. The customer sees this under **My account**.
+- **Customer:** open the site. "Plan your ride" should be locked. Register, book, then open **My account**.
+- **Admin:** go to `https://<your-site>/secure-admin-portal` (it isn't linked anywhere) and sign in as the SUPER_ADMIN. The booking should appear under **Bookings**.
+
+## Roles
+
+| Role | Can |
+|---|---|
+| SUPER_ADMIN | Everything, including team, roles and the audit log |
+| ADMIN | Bookings, customers, fleet, pricing, enquiries, reports |
+| BOOKING_MANAGER | Bookings (edit, assign, export), reports, read fleet and pricing |
+| FLEET_MANAGER | Vehicles and drivers |
+| SUPPORT_STAFF | Customers, enquiries, read-only bookings |
+| CUSTOMER | Their own profile and bookings, through the public site only |
 
 ## Local development
 
 ```
-# terminal 1: API
-cd server
-cp .env.example .env        # fill DATABASE_URL (local MySQL or TiDB) and JWT_SECRET
-npm install
-npm run dev                 # http://localhost:4000
+# terminal 1: API (needs MySQL; e.g. docker run -d -p 3307:3306 -e MYSQL_ROOT_PASSWORD=... -e MYSQL_DATABASE=tttcabs mysql:8.4)
+cd server && cp .env.example .env    # fill DATABASE_URL and JWT_SECRET
+npm install && npm run dev           # http://localhost:4000
 
-# terminal 2: website
-cp .env.example .env.local  # VITE_API_URL=http://localhost:4000
-npm install
-npm run dev                 # http://localhost:5173
+# terminal 2: website (proxies /api to :4000)
+npm install && npm run dev           # http://localhost:5173
 ```
 
-Tests: `cd server && npm test`. Point `DATABASE_URL` at a test database, because the tests write records.
+Tests: run `cd server && npm test`, with `DATABASE_URL` pointing at a **test** database.

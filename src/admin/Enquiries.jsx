@@ -2,11 +2,10 @@ import { useState } from 'react'
 import StatusBadge from '../components/StatusBadge'
 import { DataTable, Modal, PageHeader, date, useApi, useToast } from './kit'
 import { request } from '../lib/api'
+import { useAdmin } from './adminAuth'
 
-const tabs = [['', 'All'], ['corporate', 'Corporate'], ['contact', 'Contact']]
-
-export default function Enquiries() {
-  const [type, setType] = useState('')
+export default function Enquiries({ type }) {
+  const { can } = useAdmin()
   const [status, setStatus] = useState('')
   const [open, setOpen] = useState(null)
   const toast = useToast()
@@ -24,14 +23,8 @@ export default function Enquiries() {
 
   return (
     <>
-      <PageHeader title="Enquiries" sub="Messages from the contact and corporate forms." />
+      <PageHeader title={type === 'corporate' ? 'Corporate enquiries' : 'Contact enquiries'} sub={type === 'corporate' ? 'Requests from the corporate transportation form.' : 'Messages from the contact form.'} />
       <div className="mb-4 flex flex-wrap items-center gap-2">
-        <div className="flex rounded-full bg-white p-1 ring-1 ring-line" role="tablist">
-          {tabs.map(([v, l]) => (
-            <button key={l} role="tab" aria-selected={type === v} onClick={() => setType(v)}
-              className={`rounded-full px-4 py-2 text-sm font-medium transition-colors ${type === v ? 'bg-midnight text-white' : 'text-slate hover:text-ink'}`}>{l}</button>
-          ))}
-        </div>
         <select aria-label="Status" value={status} onChange={(e) => setStatus(e.target.value)} className="input !w-auto !py-2.5">
           <option value="">All statuses</option><option value="new">New</option><option value="in_progress">In progress</option><option value="closed">Closed</option>
         </select>
@@ -54,11 +47,11 @@ export default function Enquiries() {
                 .filter(([, v]) => v).map(([k, v]) => <div key={k} className="grid grid-cols-[6.5rem_1fr] gap-3"><dt className="text-slate">{k}</dt><dd>{v}</dd></div>)}
             </dl>
             <p className="mt-5 whitespace-pre-wrap rounded-xl bg-mist p-4 text-[0.95rem]">{open.message}</p>
-            <div className="mt-6 flex flex-wrap justify-end gap-2">
+            {can('enquiries:write') && <div className="mt-6 flex flex-wrap justify-end gap-2">
               {open.status !== 'in_progress' && <button onClick={() => setEnquiryStatus(open, 'in_progress')} className="btn btn-line !py-2.5">Mark in progress</button>}
               {open.status !== 'closed' && <button onClick={() => setEnquiryStatus(open, 'closed')} className="btn btn-navy !py-2.5">Mark closed</button>}
               {open.status === 'closed' && <button onClick={() => setEnquiryStatus(open, 'new')} className="btn btn-line !py-2.5">Reopen</button>}
-            </div>
+            </div>}
           </>
         )}
       </Modal>

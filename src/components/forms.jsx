@@ -1,14 +1,14 @@
 import { useState } from 'react'
 import { AnimatePresence, m } from 'framer-motion'
 import { CircleAlert, CircleCheck, LoaderCircle, MessageCircle, Phone, Mail } from 'lucide-react'
-import { NotConnectedError, whatsappLink } from '../lib/api'
+import { whatsappLink } from '../lib/api'
 import { company } from '../data/site'
 import { EASE } from '../lib/motion'
 
 export const isEmail = (v) => /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(v)
 export const isPhone = (v) => /^(\+?91[\s-]?)?[6-9]\d{9}$/.test(v.replace(/[\s-]/g, ''))
 
-/** Submit lifecycle shared by every form: idle → sending → sent | handoff | error. */
+/** Submit lifecycle shared by every form: idle → sending → sent | error. */
 export function useSubmit(send) {
   const [state, setState] = useState({ status: 'idle' })
   const run = async (payload) => {
@@ -17,7 +17,7 @@ export function useSubmit(send) {
       const res = await send(payload)
       setState({ status: 'sent', reference: res?.reference })
     } catch (e) {
-      setState({ status: e instanceof NotConnectedError ? 'handoff' : 'error', message: e.message, fields: e.fields })
+      setState({ status: 'error', message: e.message, fields: e.fields })
     }
   }
   return [state, run, () => setState({ status: 'idle' })]
@@ -49,8 +49,7 @@ export function SubmitButton({ sending, children, className = 'btn-navy' }) {
 }
 
 /**
- * Result panel. "handoff" is what visitors see until an API is configured:
- * the request is NOT received yet, so we say so and offer one-tap ways to send it.
+ * Result panel. On error the request was NOT received, so it offers one-tap ways to send it another way.
  */
 export function SubmitResult({ state, title, summary, onReset, sentText, bare, children }) {
   if (state.status === 'idle' || state.status === 'sending') return null
@@ -63,11 +62,6 @@ export function SubmitResult({ state, title, summary, onReset, sentText, bare, c
       icon: <CircleCheck className="h-6 w-6" />, tone: 'bg-emerald-50 text-emerald-700',
       heading: 'Request received',
       body: `${sentText}${state.reference ? ` Your reference is ${state.reference}.` : ''}`,
-    },
-    handoff: {
-      icon: <MessageCircle className="h-6 w-6" />, tone: 'bg-gold/15 text-[#8a6d2f]',
-      heading: 'Send this to our team to finish',
-      body: "Online submission isn't connected yet, so nothing has been sent. Send your details on WhatsApp or email in one tap, or call us.",
     },
     error: {
       icon: <CircleAlert className="h-6 w-6" />, tone: 'bg-red-50 text-red-600',

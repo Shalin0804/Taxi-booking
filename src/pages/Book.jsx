@@ -11,12 +11,22 @@ import { submitBooking } from '../lib/api'
 import { company, fleet, tripTypes, vehicleOptions } from '../data/site'
 import { EASE, getLenis } from '../lib/motion'
 import { useAuth } from '../lib/auth'
+import { RequireCustomer } from './AuthPages'
 
 const tripIcons = [Plane, TrainFront, Timer, Route, Repeat, Building2]
 const tripHints = ['To or from the airport', 'Station pick-up or drop', 'Car with driver, by the hour', 'Drop at another city', 'Go and come back', 'Something else? Tell us']
-const STEPS = ['Trip type', 'Route', 'Date & time', 'Vehicle', 'Your details', 'Review']
+const STEPS = ['Trip type', 'Route', 'Date & time', 'Vehicle', 'Passenger', 'Review']
 
+/** Booking requires a signed-in customer: visitors are sent to /login and brought back with their trip details. */
 export default function Book() {
+  return (
+    <RequireCustomer>
+      <BookFlow />
+    </RequireCustomer>
+  )
+}
+
+function BookFlow() {
   const [params] = useSearchParams()
   const { user } = useAuth()
   const initial = {
@@ -110,8 +120,7 @@ export default function Book() {
               <SubmitResult bare state={state} title="New booking request" summary={summary} onReset={reset}
                 sentText="Your booking request is with our team. We'll call you shortly to confirm the fare and driver details.">
                 <p className="mt-5 text-sm text-slate">
-                  {user ? <>Follow its status in <Link to="/account" className="font-semibold text-electric">your account</Link>.</>
-                    : <><Link to="/signup" className="font-semibold text-electric">Create an account</Link> to track future bookings online.</>}
+                  Follow its status in <Link to={`/my-account/bookings/${state.reference}`} className="font-semibold text-electric">your account</Link>.
                 </p>
               </SubmitResult>
             ) : (
@@ -207,9 +216,11 @@ export default function Book() {
 
                     {step === 4 && (
                       <div className="grid gap-5 sm:grid-cols-2">
-                        <Field label="Full name" error={errors.name}><input className="input" value={f.name} onChange={set('name')} autoComplete="name" aria-invalid={!!errors.name} /></Field>
-                        <Field label="Mobile number" error={errors.phone}><input type="tel" inputMode="tel" className="input" value={f.phone} onChange={set('phone')} autoComplete="tel" aria-invalid={!!errors.phone} /></Field>
-                        <Field label="Email (optional)" error={errors.email} className="sm:col-span-2"><input type="email" className="input" value={f.email} onChange={set('email')} autoComplete="email" aria-invalid={!!errors.email} /></Field>
+                        <p className="rounded-xl bg-mist p-4 text-sm text-slate sm:col-span-2">
+                          Filled in from your profile. Change them only if you're booking for someone else.
+                        </p>
+                        <Field label="Passenger name" error={errors.name}><input className="input" value={f.name} onChange={set('name')} autoComplete="name" aria-invalid={!!errors.name} /></Field>
+                        <Field label="Passenger mobile" error={errors.phone}><input type="tel" inputMode="tel" className="input" value={f.phone} onChange={set('phone')} autoComplete="tel" aria-invalid={!!errors.phone} /></Field>
                         <Field label="Notes for the driver (optional)" className="sm:col-span-2" hint="Flight or train number, luggage, pickup landmark">
                           <textarea rows={3} className="input resize-y" value={f.notes} onChange={set('notes')} />
                         </Field>

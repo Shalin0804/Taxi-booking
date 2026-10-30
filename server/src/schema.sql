@@ -1,13 +1,54 @@
 -- Runs on every boot (idempotent). Compatible with MySQL 8 and TiDB Cloud.
+-- Customers and staff share one users table; `role` separates them.
 
 CREATE TABLE IF NOT EXISTS users (
   id INT AUTO_INCREMENT PRIMARY KEY,
   name VARCHAR(120) NOT NULL,
   email VARCHAR(190) NOT NULL UNIQUE,
-  phone VARCHAR(20),
+  phone VARCHAR(20) NULL UNIQUE,
   password_hash VARCHAR(100) NOT NULL,
-  role ENUM('customer', 'staff', 'admin') NOT NULL DEFAULT 'customer',
-  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+  role ENUM('CUSTOMER', 'SUPPORT_STAFF', 'FLEET_MANAGER', 'BOOKING_MANAGER', 'ADMIN', 'SUPER_ADMIN') NOT NULL DEFAULT 'CUSTOMER',
+  status ENUM('active', 'disabled') NOT NULL DEFAULT 'active',
+  failed_logins INT NOT NULL DEFAULT 0,
+  locked_until DATETIME NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+);
+
+-- Server-side sessions so logout and "sign out everywhere" really end access.
+CREATE TABLE IF NOT EXISTS sessions (
+  id CHAR(32) PRIMARY KEY,
+  user_id INT NOT NULL,
+  kind ENUM('customer', 'admin') NOT NULL,
+  expires_at DATETIME NOT NULL,
+  revoked_at DATETIME NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  KEY idx_sessions_user (user_id),
+  CONSTRAINT fk_s_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+);
+
+-- Single-use, expiring reset tokens. Only a SHA-256 of the token is stored.
+CREATE TABLE IF NOT EXISTS password_resets (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  user_id INT NOT NULL,
+  token_hash CHAR(64) NOT NULL UNIQUE,
+  expires_at DATETIME NOT NULL,
+  used_at DATETIME NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT fk_pr_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS audit_logs (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  user_id INT NULL,
+  action VARCHAR(60) NOT NULL,
+  entity VARCHAR(40),
+  entity_id VARCHAR(40),
+  details TEXT,
+  ip VARCHAR(64),
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  KEY idx_audit_created (created_at),
+  CONSTRAINT fk_a_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE SET NULL
 );
 
 CREATE TABLE IF NOT EXISTS vehicles (
@@ -45,7 +86,7 @@ CREATE TABLE IF NOT EXISTS pricing (
 CREATE TABLE IF NOT EXISTS bookings (
   id INT AUTO_INCREMENT PRIMARY KEY,
   reference VARCHAR(16) NOT NULL UNIQUE,
-  user_id INT NULL,
+  user_id INT NOT NULL,
   trip_type VARCHAR(60) NOT NULL,
   pickup VARCHAR(255) NOT NULL,
   dropoff VARCHAR(255),
@@ -59,6 +100,7 @@ CREATE TABLE IF NOT EXISTS bookings (
   email VARCHAR(190),
   notes TEXT,
   status ENUM('pending', 'confirmed', 'assigned', 'in_progress', 'completed', 'cancelled') NOT NULL DEFAULT 'pending',
+  cancel_requested_at DATETIME NULL,
   driver_id INT NULL,
   vehicle_id INT NULL,
   fare DECIMAL(10, 2) NULL,
@@ -67,7 +109,7 @@ CREATE TABLE IF NOT EXISTS bookings (
   updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   KEY idx_bookings_status (status),
   KEY idx_bookings_user (user_id),
-  CONSTRAINT fk_b_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE SET NULL,
+  CONSTRAINT fk_b_user FOREIGN KEY (user_id) REFERENCES users (id),
   CONSTRAINT fk_b_driver FOREIGN KEY (driver_id) REFERENCES drivers (id) ON DELETE SET NULL,
   CONSTRAINT fk_b_vehicle FOREIGN KEY (vehicle_id) REFERENCES vehicles (id) ON DELETE SET NULL
 );

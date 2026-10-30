@@ -1,7 +1,7 @@
 # Render Blueprint for the API. In Render: New > Blueprint > pick this repo.
 services:
   - type: web
-    name: tttcabs-api
+    name: tttcabs-api          # gives https://tttcabs-api.onrender.com (must match vercel.json)
     runtime: node
     rootDir: server
     plan: free
@@ -11,11 +11,21 @@ services:
     envVars:
       - key: NODE_VERSION
         value: 22
+      - key: NODE_ENV
+        value: production     # turns on Secure cookies
+      - key: TRUST_PROXY
+        value: "2"            # Vercel rewrite + Render proxy, for per-IP rate limits
       - key: DATABASE_URL
-        sync: false          # paste the TiDB Cloud connection string
+        sync: false           # TiDB Cloud connection string
       - key: DB_SSL
         value: "true"
       - key: JWT_SECRET
         generateValue: true
+      - key: APP_URL
+        sync: false           # public site URL, used in password-reset emails
       - key: CORS_ORIGIN
-        sync: false          # your Vercel URL, e.g. https://taxi-booking.vercel.app
+        sync: false           # same as APP_URL
+      - key: SMTP_URL
+        sync: false           # e.g. smtps://user:pass@smtp.gmail.com:465 ; without it reset links only go to the log
+      - key: MAIL_FROM
+        sync: false

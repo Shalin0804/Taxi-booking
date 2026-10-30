@@ -5,6 +5,7 @@ import StatusBadge, { statusLabel } from '../components/StatusBadge'
 import { DataTable, Modal, PageHeader, Spinner, date, inr, useApi, useToast } from './kit'
 import { download, request } from '../lib/api'
 import { tripTypes } from '../data/site'
+import { useAdmin } from './adminAuth'
 
 const STATUSES = ['pending', 'confirmed', 'assigned', 'in_progress', 'completed', 'cancelled']
 
@@ -13,7 +14,8 @@ export default function Bookings() {
   const [q, setQ] = useState(params.get('q') || '')
   const [selected, setSelected] = useState(null)
   const toast = useToast()
-  const filters = Object.fromEntries(['status', 'trip', 'from', 'to', 'q', 'page'].map((k) => [k, params.get(k) || '']))
+  const { can } = useAdmin()
+  const filters = Object.fromEntries(['status', 'trip', 'from', 'to', 'q', 'cancel', 'page'].map((k) => [k, params.get(k) || '']))
   const qs = new URLSearchParams(Object.entries(filters).filter(([, v]) => v)).toString()
   const { data, error, loading, reload } = useApi(`/api/admin/bookings${qs ? `?${qs}` : ''}`)
 
@@ -40,7 +42,9 @@ export default function Bookings() {
   return (
     <>
       <PageHeader title="Bookings" sub={data ? `${data.total} matching booking${data.total === 1 ? '' : 's'}` : 'Loading…'}>
-        <button onClick={exportCsv} className="btn btn-line !px-4 !py-2.5"><Download className="h-4 w-4" /> Export to Excel</button>
+        <button onClick={() => update({ cancel: filters.cancel ? '' : '1' })} aria-pressed={!!filters.cancel}
+          className={`btn !px-4 !py-2.5 ${filters.cancel ? 'btn-navy' : 'btn-line'}`}>Cancellation requests</button>
+        {can('bookings:export') && <button onClick={exportCsv} className="btn btn-line !px-4 !py-2.5"><Download className="h-4 w-4" /> Export to Excel</button>}
       </PageHeader>
 
       <div className="mb-4 grid gap-2 rounded-2xl bg-white p-3 ring-1 ring-line sm:grid-cols-2 lg:grid-cols-[2fr_1fr_1fr_1fr_1fr]">
@@ -70,7 +74,7 @@ export default function Bookings() {
           { key: 'pickup_date', label: 'Pickup', render: (r) => <span className="whitespace-nowrap">{date(r.pickup_date)}, {r.pickup_time?.slice(0, 5)}</span> },
           { key: 'trip_type', label: 'Trip' },
           { key: 'driver_name', label: 'Driver', render: (r) => r.driver_name || <span className="text-slate">Unassigned</span> },
-          { key: 'status', label: 'Status', render: (r) => <StatusBadge status={r.status} /> },
+          { key: 'status', label: 'Status', render: (r) => <span className="grid justify-items-start gap-1"><StatusBadge status={r.status} />{r.cancel_requested_at && !['cancelled', 'completed'].includes(r.status) && <span className="text-xs font-semibold text-red-600">Cancel requested</span>}</span> },
         ]} />
 
       {pages > 1 && (
@@ -88,6 +92,8 @@ export default function Bookings() {
 
 function BookingDetail({ booking, onClose, onSaved }) {
   const toast = useToast()
+  const { can } = useAdmin()
+  const readOnly = !can('bookings:write')
   const drivers = useApi('/api/admin/drivers')
   const vehicles = useApi('/api/admin/vehicles')
   const [f, setF] = useState({})
@@ -102,7 +108,7 @@ function BookingDetail({ booking, onClose, onSaved }) {
     e.preventDefault()
     setBusy(true)
     try {
-      await request(`/api/admin/bookings/${booking.id}`, { method: 'PATCH', body: f })
+      await request(`/api/admin/bookings/${booking.id}`, { method: 'PATCH', body: { ...f, clear_cancel_request: f.status === 'cancelled' || undefined } })
       onSaved()
       onClose()
     } catch (ex) {
@@ -115,8 +121,8 @@ function BookingDetail({ booking, onClose, onSaved }) {
     ['Trip', b.trip_type], ['Pickup', b.pickup], ['Destination', b.dropoff || '—'],
     ['When', `${date(b.pickup_date)}, ${b.pickup_time?.slice(0, 5)}${b.return_date ? ` · returns ${date(b.return_date)}` : ''}`],
     ['Vehicle wanted', b.vehicle_pref || '—'], ['Passengers', b.passengers || '—'],
-    ['Customer', `${b.name} · ${b.phone}${b.email ? ` · ${b.email}` : ''}`], ['Notes', b.notes || '—'],
-    ['Received', new Date(b.created_at.replace(' ', 'T')).toLocaleString('en-IN')], ['Account', b.user_id ? 'Signed-in customer' : 'Guest'],
+    ['Passenger', `${b.name} · ${b.phone}${b.email ? ` · ${b.email}` : ''}`], ['Account', b.account_email || '—'], ['Notes', b.notes || '—'],
+    ['Received', new Date(b.created_at.replace(' ', 'T')).toLocaleString('en-IN')],
   ]
   return (
     <Modal open onClose={onClose} title={`Booking ${b.reference}`} wide>
@@ -130,6 +136,16 @@ function BookingDetail({ booking, onClose, onSaved }) {
           </div>
         </dl>
         <form onSubmit={save} className="grid content-start gap-4 rounded-2xl bg-mist p-4 sm:p-5">
+          {b.cancel_requested_at && !['cancelled', 'completed'].includes(b.status) && (
+            <div className="rounded-xl bg-red-50 p-3 text-sm text-red-800">
+              The customer asked to cancel this trip.
+              {!readOnly && <div className="mt-2 flex flex-wrap gap-2">
+                <button type="button" onClick={() => setF((s) => ({ ...s, status: 'cancelled' }))} className="font-semibold underline">Set to cancelled</button>
+                <button type="button" onClick={async () => { await request(`/api/admin/bookings/${b.id}`, { method: 'PATCH', body: { clear_cancel_request: true } }); onSaved(); onClose() }} className="font-semibold underline">Dismiss request</button>
+              </div>}
+            </div>
+          )}
+          <fieldset disabled={readOnly} className="grid gap-4 disabled:opacity-70">
           <label className="field"><span className="field-label">Status</span>
             <select className="input" value={f.status} onChange={set('status')}>{STATUSES.map((s) => <option key={s} value={s}>{statusLabel(s)}</option>)}</select>
           </label>
@@ -151,7 +167,9 @@ function BookingDetail({ booking, onClose, onSaved }) {
           <label className="field"><span className="field-label">Internal notes</span>
             <textarea rows={3} className="input" value={f.admin_notes} onChange={set('admin_notes')} />
           </label>
-          <button disabled={busy} className="btn btn-navy">{busy ? <><Spinner /> Saving…</> : 'Save changes'}</button>
+          </fieldset>
+          {readOnly ? <p className="text-sm text-slate">Your role can view bookings but not change them.</p>
+            : <button disabled={busy} className="btn btn-navy">{busy ? <><Spinner /> Saving…</> : 'Save changes'}</button>}
         </form>
       </div>
     </Modal>

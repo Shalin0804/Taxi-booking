@@ -35,8 +35,10 @@ export const pageMeta = {
     image: '/images/city-1400.webp',
   },
   '/login': { title: 'Sign in', description: 'Sign in to your TTT Cabs account to track your bookings.' },
-  '/signup': { title: 'Create an account', description: 'Create a TTT Cabs account to book faster and track every trip.' },
-  '/account': { title: 'My account', description: 'Your TTT Cabs bookings and their status.' },
+  '/register': { title: 'Create an account', description: 'Create a TTT Cabs account to book rides and track every trip.' },
+  '/forgot-password': { title: 'Reset your password', description: 'Get a link to reset your TTT Cabs password.' },
+  '/reset-password': { title: 'Choose a new password', description: 'Set a new password for your TTT Cabs account.' },
+  '/my-account': { title: 'My account', description: 'Your TTT Cabs bookings, payments and profile.' },
   '/book': {
     title: 'Book a Ride',
     description: 'Book a TTT Cabs ride in a few steps: airport, railway, hourly rental or outstation. Choose your vehicle and our team confirms your booking.',
