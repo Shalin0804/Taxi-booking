@@ -168,7 +168,4 @@ export function Signup() {
   )
 }
 
-export function AdminLoginRedirect() {
-  return <Navigate to="/login?next=/admin" replace />
-}
 

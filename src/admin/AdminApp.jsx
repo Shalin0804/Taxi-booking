@@ -12,6 +12,7 @@ import Bookings from './Bookings'
 import { Customers, Users as UsersPage } from './People'
 import { Drivers, Pricing, Vehicles } from './Resources'
 import Enquiries from './Enquiries'
+import AdminLogin from './AdminLogin'
 
 const nav = [
   { to: '/admin', label: 'Overview', icon: LayoutDashboard, end: true },
@@ -33,8 +34,8 @@ export default function AdminApp() {
 
   if (!API_URL) return <Notice title="API not connected" text="Set VITE_API_URL to the TTT Cabs API address to use the admin dashboard." />
   if (!ready) return <div className="min-h-screen bg-midnight" />
-  if (!user) return <Navigate to={`/login?next=${encodeURIComponent(pathname)}`} replace />
-  if (!isStaff(user)) return <Notice title="No admin access" text="This account doesn't have access to the admin dashboard." />
+  if (!user) return <AdminLogin />
+  if (!isStaff(user)) return <Notice title="No admin access" text="This account doesn't have access to the admin dashboard." onSignOut={logout} />
 
   const items = nav.filter((n) => !n.admin || user.role === 'admin')
   const sidebar = (
@@ -103,14 +104,17 @@ export default function AdminApp() {
   )
 }
 
-function Notice({ title, text }) {
+function Notice({ title, text, onSignOut }) {
   return (
     <div className="grid min-h-screen place-items-center bg-midnight px-4 text-center text-white">
       <div>
         <Building2 className="mx-auto h-10 w-10 text-gold" />
         <h1 className="mt-5 text-3xl font-semibold">{title}</h1>
         <p className="mt-2 text-white/65">{text}</p>
-        <Link to="/" className="btn btn-gold mt-8">Back to website</Link>
+        <div className="mt-8 flex flex-wrap justify-center gap-3">
+          <Link to="/" className="btn btn-gold">Back to website</Link>
+          {onSignOut && <button onClick={onSignOut} className="btn btn-ghost">Sign in as admin</button>}
+        </div>
       </div>
     </div>
   )

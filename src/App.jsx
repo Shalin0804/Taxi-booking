@@ -1,5 +1,5 @@
 import { lazy, Suspense } from 'react'
-import { BrowserRouter, Routes, Route, useLocation } from 'react-router-dom'
+import { BrowserRouter, Navigate, Routes, Route, useLocation } from 'react-router-dom'
 import { AnimatePresence, LazyMotion, domAnimation, m } from 'framer-motion'
 import Navbar from './components/Navbar'
 import Footer from './components/Footer'
@@ -17,7 +17,6 @@ const Book = lazy(() => import('./pages/Book'))
 const NotFound = lazy(() => import('./pages/NotFound'))
 const Login = lazy(() => import('./pages/AuthPages').then((mod) => ({ default: mod.Login })))
 const Signup = lazy(() => import('./pages/AuthPages').then((mod) => ({ default: mod.Signup })))
-const AdminLoginRedirect = lazy(() => import('./pages/AuthPages').then((mod) => ({ default: mod.AdminLoginRedirect })))
 const Account = lazy(() => import('./pages/Account'))
 const AdminApp = lazy(() => import('./admin/AdminApp'))
 
@@ -60,7 +59,7 @@ function Shell() {
     return (
       <Suspense fallback={<div className="min-h-screen bg-midnight" />}>
         <Routes>
-          <Route path="/admin/login" element={<AdminLoginRedirect />} />
+          <Route path="/admin/login" element={<Navigate to="/admin" replace />} />
           <Route path="/admin/*" element={<AdminApp />} />
         </Routes>
       </Suspense>
