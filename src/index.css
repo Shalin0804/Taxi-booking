@@ -1,0 +1,124 @@
+@import 'tailwindcss';
+
+@theme {
+  --color-midnight: #071426;
+  --color-navy: #10243d;
+  --color-navy-2: #1a3352;
+  --color-mist: #f5f7fa;
+  --color-line: #e3e8ef;
+  --color-ink: #0d1b2e;
+  --color-slate: #5b6b80;
+  --color-electric: #3278f6;
+  --color-gold: #c8a96b;
+  --color-gold-soft: #e3cfa3;
+  --color-gold-dark: #8a6d2f;
+  --font-sans: 'Manrope Variable', 'Manrope', ui-sans-serif, system-ui, sans-serif;
+  --ease-lux: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@layer base {
+  html {
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+  html.lenis, html.lenis body { height: auto; }
+  .lenis.lenis-smooth { scroll-behavior: auto !important; }
+  body {
+    @apply bg-white font-sans text-ink;
+    font-size: 1.0625rem;
+    line-height: 1.65;
+    overflow-x: clip;
+  }
+  ::selection { background: var(--color-gold); color: var(--color-midnight); }
+  :focus-visible {
+    outline: 2px solid var(--color-electric);
+    outline-offset: 3px;
+    border-radius: 6px;
+  }
+  h1, h2, h3 { letter-spacing: -0.03em; line-height: 1.05; font-weight: 600; text-wrap: balance; overflow-wrap: break-word; hyphens: auto; }
+  p { text-wrap: pretty; }
+  img { max-width: 100%; }
+}
+
+@layer components {
+  .wrap { @apply mx-auto w-full max-w-[1320px] px-4 sm:px-6 lg:px-10; }
+  .display { font-size: clamp(2.75rem, 7.2vw, 6.4rem); letter-spacing: -0.045em; line-height: 0.98; }
+  .h2 { font-size: clamp(1.85rem, 4.2vw, 3.6rem); }
+  .lede { @apply text-lg leading-relaxed sm:text-xl; max-width: 38rem; }
+
+  /* Buttons: a fill sweeps in from the left, the icon nudges, press compresses. */
+  .btn {
+    @apply relative inline-flex items-center justify-center gap-2.5 overflow-hidden rounded-full px-7 py-3.5 text-[0.95rem] font-semibold whitespace-nowrap;
+    isolation: isolate;
+    transition: color 0.45s var(--ease-lux), transform 0.2s var(--ease-lux), border-color 0.45s;
+  }
+  .btn::before {
+    content: '';
+    @apply absolute inset-0 -z-10 rounded-full;
+    transform: scaleX(0);
+    transform-origin: right;
+    transition: transform 0.55s var(--ease-lux);
+  }
+  .btn:hover::before { transform: scaleX(1); transform-origin: left; }
+  .btn:active { transform: scale(0.97); }
+  .btn svg { transition: transform 0.45s var(--ease-lux); }
+  .btn:hover svg { transform: translateX(3px); }
+  .btn:disabled { @apply pointer-events-none opacity-60; }
+
+  .btn-gold { @apply bg-gold text-midnight; }
+  .btn-gold::before { background: #fff; }
+  .btn-ghost { @apply border border-white/35 text-white; }
+  .btn-ghost::before { background: #fff; }
+  .btn-ghost:hover { @apply border-white text-midnight; }
+  .btn-navy { @apply bg-midnight text-white; }
+  .btn-navy::before { background: var(--color-electric); }
+  .btn-line { @apply border border-ink/20 text-ink; }
+  .btn-line::before { background: var(--color-midnight); }
+  .btn-line:hover { @apply border-midnight text-white; }
+
+  .field { @apply block; }
+  .field-label { @apply mb-1.5 block text-sm font-medium text-slate; }
+  .input {
+    @apply w-full rounded-xl border border-line bg-white px-4 py-3.5 text-[0.98rem] text-ink placeholder:text-slate/60;
+    transition: border-color 0.25s, box-shadow 0.25s;
+  }
+  .input:focus { @apply border-electric outline-none; box-shadow: 0 0 0 4px rgb(50 120 246 / 0.14); }
+  .input[aria-invalid='true'] { @apply border-red-500; }
+  .field-error { @apply mt-1.5 text-sm text-red-600; }
+
+  .input-dark {
+    @apply w-full rounded-xl border border-white/12 bg-white/[0.06] px-4 py-3 text-[0.95rem] text-white placeholder:text-white/45;
+    transition: border-color 0.25s, background-color 0.25s;
+    color-scheme: dark;
+  }
+  .input-dark:focus { @apply border-gold/80 bg-white/[0.1] outline-none; }
+  .input-dark option { color: var(--color-ink); }
+
+  .nav-item {
+    @apply relative rounded-full px-3.5 py-2 text-[0.92rem] font-medium text-white/75;
+    transition: color 0.3s;
+  }
+  .nav-item::after {
+    content: '';
+    @apply absolute bottom-0.5 left-1/2 h-[2px] w-4 rounded-full bg-gold;
+    transform: translateX(-50%) scaleX(0);
+    transition: transform 0.45s var(--ease-lux);
+  }
+  .nav-item:hover, .nav-item.is-active { @apply text-white; }
+  .nav-item:hover::after, .nav-item.is-active::after { transform: translateX(-50%) scaleX(1); }
+
+  .link-u {
+    background: linear-gradient(currentColor, currentColor) 0 100% / 0 1px no-repeat;
+    transition: background-size 0.45s var(--ease-lux);
+  }
+  .link-u:hover { background-size: 100% 1px; }
+}
+
+/* Scroll FX initial states are only applied when JS + motion are available, so content is
+   never hidden for no-JS or reduced-motion visitors. */
+.fx [data-reveal] { opacity: 0; transform: translateY(28px); }
+.fx [data-mask] { clip-path: inset(100% 0 0 0); }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { transition-duration: 0.01ms !important; animation-duration: 0.01ms !important; }
+}
