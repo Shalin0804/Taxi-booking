@@ -4,6 +4,10 @@ import mysql from 'mysql2/promise'
 // DATABASE_URL: mysql://user:pass@host:port/dbname
 // DB_SSL=true is required for TiDB Cloud (it rejects plain connections).
 if (!process.env.DATABASE_URL) throw new Error('DATABASE_URL is not set')
+const dbName = new URL(process.env.DATABASE_URL).pathname.slice(1)
+if (!dbName || ['sys', 'mysql', 'information_schema', 'performance_schema'].includes(dbName.toLowerCase())) {
+  throw new Error(`DATABASE_URL must end with your app database (e.g. /tttcabs), not "/${dbName}". Create it with: CREATE DATABASE tttcabs;`)
+}
 
 export const pool = mysql.createPool({
   uri: process.env.DATABASE_URL,
