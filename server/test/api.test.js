@@ -98,6 +98,11 @@ test('customer register, login by email or phone, httpOnly cookie, logout', asyn
 test('CSRF: state-changing requests without the header or from a foreign origin are rejected', async () => {
   assert.equal((await client().call('/api/auth/login', { method: 'POST', csrf: false, body: { identifier: 'x@y.co', password: 'x' } })).status, 403)
   assert.equal((await client().call('/api/auth/login', { method: 'POST', headers: { Origin: 'https://evil.example' }, body: { identifier: 'x@y.co', password: 'x' } })).status, 403)
+  // Behind Vercel's /api rewrite the browser's origin is the site host reported in X-Forwarded-Host.
+  const viaProxy = { Origin: 'https://site.example', 'X-Forwarded-Host': 'site.example' }
+  assert.equal((await client().call('/api/auth/login', { method: 'POST', headers: viaProxy, body: { identifier: 'x@y.co', password: 'x' } })).status, 401, 'site origin via proxy passes CSRF')
+  assert.equal((await client().call('/api/auth/login', { method: 'POST', headers: { ...viaProxy, Origin: 'https://evil.example' }, body: { identifier: 'x@y.co', password: 'x' } })).status, 403)
+  assert.equal((await client().call('/api/auth/login', { method: 'POST', csrf: false, headers: viaProxy, body: { identifier: 'x@y.co', password: 'x' } })).status, 403, 'header still required')
 })
 
 test('bookings require a customer session; ownership comes from the session', async () => {

@@ -11,7 +11,15 @@ export const app = express()
 // Number of proxies in front of the app (Vercel rewrite + Render = 2 in production). Used for per-IP rate limits.
 app.set('trust proxy', Number(process.env.TRUST_PROXY ?? 1))
 app.disable('x-powered-by')
-const origins = (process.env.CORS_ORIGIN || 'http://localhost:5173,http://localhost:4173').split(',').map((s) => s.trim())
+const origins = (process.env.CORS_ORIGIN || 'http://localhost:5173,http://localhost:4173').split(',').map((s) => s.trim().replace(/\/+$/, '')).filter(Boolean)
+// Origins that count as "this site": the configured list, the API's own host, and the host a proxy
+// (Vercel's /api rewrite) says the browser used. A foreign page can't spoof the latter, because the
+// required X-Requested-With header forces a CORS preflight that other origins fail.
+const sameSite = (req, origin) => {
+  if (origins.includes(origin)) return true
+  const hosts = [req.get('host'), ...String(req.get('x-forwarded-host') || '').split(',')].map((h) => h?.trim()).filter(Boolean)
+  return hosts.some((h) => origin === `https://${h}` || origin === `http://${h}`)
+}
 app.use(cors({ origin: origins, credentials: true }))
 app.use(express.json({ limit: '50kb' }))
 app.use(cookieParser())
@@ -21,7 +29,7 @@ app.use(cookieParser())
 app.use('/api', (req, res, next) => {
   if (['GET', 'HEAD', 'OPTIONS'].includes(req.method)) return next()
   const origin = req.get('origin')
-  if (req.get('x-requested-with') !== 'ttt' || (origin && !origins.includes(origin) && origin !== `${req.protocol}://${req.get('host')}`)) {
+  if (req.get('x-requested-with') !== 'ttt' || (origin && !sameSite(req, origin))) {
     return res.status(403).json({ error: 'Request blocked. Please reload the page and try again.' })
   }
   next()
