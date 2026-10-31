@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react'
-import { Navigate, NavLink, Route, Routes, useLocation } from 'react-router-dom'
+import { Navigate, Route, Routes, useLocation } from 'react-router-dom'
 import { AnimatePresence, m } from 'framer-motion'
-import { BarChart3, Building2, CalendarDays, Car, Inbox, LayoutDashboard, LogOut, Mail, Menu, Settings as SettingsIcon, ShieldOff, Tags, UserCog, UserRound, Users, X } from 'lucide-react'
+import { BarChart3, Building2, CalendarDays, Car, Inbox, LayoutDashboard, Mail, Menu, Settings as SettingsIcon, ShieldOff, Tags, UserCog, UserRound, Users, X } from 'lucide-react'
 import Logo from '../components/Logo'
-import { AdminAuthProvider, roleLabel, useAdmin } from './adminAuth'
+import { AdminAuthProvider, useAdmin } from './adminAuth'
+import Sidebar from './Sidebar'
 import { ADMIN_BASE } from './base'
 import { EASE } from '../lib/motion'
 import { ToastProvider } from './kit'
@@ -18,17 +19,17 @@ import Settings from './Settings'
 
 // Each module and the permission it needs. The server enforces the same permissions on its API.
 const modules = [
-  { path: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, perm: 'stats:read', el: <Overview /> },
-  { path: 'bookings', label: 'Bookings', icon: CalendarDays, perm: 'bookings:read', el: <Bookings /> },
-  { path: 'customers', label: 'Customers', icon: Users, perm: 'customers:read', el: <Customers /> },
-  { path: 'drivers', label: 'Drivers', icon: UserRound, perm: 'fleet:read', el: <Drivers /> },
-  { path: 'vehicles', label: 'Vehicles', icon: Car, perm: 'fleet:read', el: <Vehicles /> },
-  { path: 'pricing', label: 'Pricing', icon: Tags, perm: 'pricing:read', el: <Pricing /> },
-  { path: 'corporate-enquiries', label: 'Corporate enquiries', icon: Building2, perm: 'enquiries:read', el: <Enquiries type="corporate" /> },
-  { path: 'contact-enquiries', label: 'Contact enquiries', icon: Mail, perm: 'enquiries:read', el: <Enquiries type="contact" /> },
-  { path: 'reports', label: 'Reports', icon: BarChart3, perm: 'reports:read', el: <Reports /> },
-  { path: 'users', label: 'Team & roles', icon: UserCog, perm: 'users:manage', el: <Team /> },
-  { path: 'settings', label: 'Settings', icon: SettingsIcon, perm: null, el: <Settings /> },
+  { path: 'dashboard', group: 'Overview', label: 'Dashboard', icon: LayoutDashboard, perm: 'stats:read', el: <Overview /> },
+  { path: 'bookings', group: 'Operations', label: 'Bookings', icon: CalendarDays, perm: 'bookings:read', el: <Bookings /> },
+  { path: 'customers', group: 'Operations', label: 'Customers', icon: Users, perm: 'customers:read', el: <Customers /> },
+  { path: 'drivers', group: 'Fleet & pricing', label: 'Drivers', icon: UserRound, perm: 'fleet:read', el: <Drivers /> },
+  { path: 'vehicles', group: 'Fleet & pricing', label: 'Vehicles', icon: Car, perm: 'fleet:read', el: <Vehicles /> },
+  { path: 'pricing', group: 'Fleet & pricing', label: 'Pricing', icon: Tags, perm: 'pricing:read', el: <Pricing /> },
+  { path: 'corporate-enquiries', group: 'Operations', label: 'Corporate enquiries', icon: Building2, perm: 'enquiries:read', el: <Enquiries type="corporate" /> },
+  { path: 'contact-enquiries', group: 'Operations', label: 'Contact enquiries', icon: Mail, perm: 'enquiries:read', el: <Enquiries type="contact" /> },
+  { path: 'reports', group: 'Overview', label: 'Reports', icon: BarChart3, perm: 'reports:read', el: <Reports /> },
+  { path: 'users', group: 'Administration', label: 'Team & roles', icon: UserCog, perm: 'users:manage', el: <Team /> },
+  { path: 'settings', group: 'Administration', label: 'Settings', icon: SettingsIcon, perm: null, el: <Settings /> },
 ]
 
 export default function AdminApp() {
@@ -40,7 +41,7 @@ export default function AdminApp() {
 }
 
 function Portal() {
-  const { user, ready, logout, can } = useAdmin()
+  const { user, ready, can } = useAdmin()
   const [open, setOpen] = useState(false)
   const { pathname } = useLocation()
   useEffect(() => setOpen(false), [pathname])
@@ -53,36 +54,12 @@ function Portal() {
   if (!sub) return <Navigate to={`${ADMIN_BASE}/${modules.find((x) => !x.perm || can(x.perm)).path}`} replace />
 
   const items = modules.filter((x) => !x.perm || can(x.perm))
-  const sidebar = (
-    <div className="flex h-full flex-col bg-midnight px-4 py-6 text-white">
-      <div className="px-2"><Logo /></div>
-      <p className="mt-2 px-2 text-xs text-white/45">Administration</p>
-      <nav className="mt-7 grid gap-0.5 overflow-y-auto" aria-label="Admin">
-        {items.map((n) => (
-          <NavLink key={n.path} to={`${ADMIN_BASE}/${n.path}`}
-            className={({ isActive }) => `relative flex items-center gap-3 rounded-xl px-3 py-2.5 text-[0.92rem] font-medium transition-colors ${
-              isActive ? 'bg-white/10 text-white' : 'text-white/65 hover:bg-white/5 hover:text-white'}`}>
-            {({ isActive }) => (
-              <>
-                {isActive && <span className="absolute inset-y-2 left-0 w-[3px] rounded-full bg-gold" />}
-                <n.icon className={`h-[18px] w-[18px] ${isActive ? 'text-gold' : ''}`} /> {n.label}
-              </>
-            )}
-          </NavLink>
-        ))}
-      </nav>
-      <div className="mt-auto grid gap-1 border-t border-white/10 pt-4">
-        <button onClick={logout} className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm text-white/65 hover:bg-white/5 hover:text-white"><LogOut className="h-4 w-4" /> Sign out</button>
-        <p className="mt-2 truncate px-3 text-xs text-white/40">{user.email}</p>
-        <p className="px-3 text-xs text-gold/80">{roleLabel(user.role)}</p>
-      </div>
-    </div>
-  )
+  const sidebar = <Sidebar items={items} />
 
   return (
     <ToastProvider>
       <div className="min-h-screen bg-[#f7f8fb] lg:pl-64">
-        <aside className="fixed inset-y-0 left-0 z-40 hidden w-64 lg:block">{sidebar}</aside>
+        <aside className="fixed inset-y-0 left-0 z-40 hidden w-64 shadow-[8px_0_40px_-20px_rgb(7_20_38/0.6)] lg:block">{sidebar}</aside>
         <header className="sticky top-0 z-30 flex items-center justify-between border-b border-line bg-white/90 px-4 py-3 backdrop-blur lg:hidden">
           <Logo className="text-midnight" />
           <button onClick={() => setOpen(true)} className="grid h-10 w-10 place-items-center rounded-full border border-line" aria-label="Open admin menu"><Menu className="h-5 w-5" /></button>
