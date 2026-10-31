@@ -217,6 +217,13 @@ test('team management: SUPER_ADMIN creates staff; disabling revokes their sessio
   assert.equal((await s.call('/api/admin/auth/login', { method: 'POST', body: { email, password: 'newstaffpass1' } })).status, 401)
 })
 
+test('audit log records the visitor IP forwarded by Vercel', async () => {
+  const c = client()
+  await c.call('/api/admin/auth/login', { method: 'POST', headers: { 'X-Vercel-Forwarded-For': '203.0.113.7' }, body: { email: `super_admin-${run}@example.test`, password: 'staffpassword1' } })
+  const [row] = await query("SELECT ip FROM audit_logs WHERE action = 'admin.login' ORDER BY id DESC LIMIT 1")
+  assert.equal(row.ip, '203.0.113.7')
+})
+
 test('expired and revoked sessions are rejected', async () => {
   const c = await customer('expiry')
   assert.equal((await c.call('/api/auth/me')).status, 200)

@@ -1,5 +1,5 @@
 import { Router } from 'express'
-import rateLimit from 'express-rate-limit'
+import { limiter } from '../ip.js'
 import bcrypt from 'bcryptjs'
 import { query } from '../db.js'
 import { STAFF_ROLES, audit, endSession, load, permissionsFor, publicUser, requireAdmin, revokeAllSessions, startSession } from '../auth.js'
@@ -8,7 +8,7 @@ import { check, isDate, isEmail, isPhone, normPhone, str, today } from '../valid
 import { TRIP_TYPES } from './customer.js'
 
 const r = Router()
-const loginLimiter = rateLimit({ windowMs: 15 * 60e3, limit: 20, message: { error: 'Too many attempts. Try again in 15 minutes.' } })
+const loginLimiter = limiter({ windowMs: 15 * 60e3, limit: 20, message: { error: 'Too many attempts. Try again in 15 minutes.' } })
 const BOOKING_STATUS = ['pending', 'confirmed', 'assigned', 'in_progress', 'completed', 'cancelled']
 // India-time calendar date a booking was made (created_at is stored in UTC).
 const BOOKED_ON = "DATE(CONVERT_TZ(created_at, '+00:00', '+05:30'))"
@@ -328,12 +328,6 @@ r.patch('/users/:id', requireAdmin('users:manage'), async (req, res) => {
   if (status === 'disabled') await revokeAllSessions(id)
   await audit(req, 'team.update', 'user', id, { role, status })
   res.json({ ok: true })
-})
-
-// TEMPORARY (remove after reading): which proxy headers reach the API, to pick the real client IP.
-r.get('/debug/ip', requireAdmin('users:manage'), (req, res) => {
-  const pick = ['x-forwarded-for', 'x-real-ip', 'x-vercel-forwarded-for', 'x-vercel-ip-country', 'cf-connecting-ip', 'true-client-ip', 'x-forwarded-host', 'cf-ipcountry', 'via']
-  res.json({ ip: req.ip, ips: req.ips, remote: req.socket.remoteAddress, headers: Object.fromEntries(pick.map((h) => [h, req.get(h) ?? null])) })
 })
 
 r.get('/audit', requireAdmin('audit:read'), async (_req, res) => {

@@ -6,6 +6,7 @@
 import { randomBytes } from 'node:crypto'
 import jwt from 'jsonwebtoken'
 import { query } from './db.js'
+import { clientIp } from './ip.js'
 
 const SECRET = process.env.JWT_SECRET
 if (!SECRET || SECRET.length < 32) throw new Error('JWT_SECRET must be set (32+ characters)')
@@ -108,6 +109,6 @@ export const requireAdmin = (...perms) => async (req, res, next) => {
 export async function audit(req, action, entity, entityId, details) {
   await query('INSERT INTO audit_logs (user_id, action, entity, entity_id, details, ip) VALUES (?, ?, ?, ?, ?, ?)', [
     req.user?.id ?? null, action, entity ?? null, entityId == null ? null : String(entityId),
-    details ? JSON.stringify(details).slice(0, 4000) : null, req.ip,
+    details ? JSON.stringify(details).slice(0, 4000) : null, clientIp(req),
   ])
 }

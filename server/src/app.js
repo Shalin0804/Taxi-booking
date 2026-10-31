@@ -1,14 +1,14 @@
 import express from 'express'
 import cors from 'cors'
 import cookieParser from 'cookie-parser'
-import rateLimit from 'express-rate-limit'
+import { limiter } from './ip.js'
 import { query } from './db.js'
 import { check, isEmail, isPhone, normPhone, str } from './validate.js'
 import customer from './routes/customer.js'
 import admin from './routes/admin.js'
 
 export const app = express()
-// Number of proxies in front of the app (Vercel rewrite + Render = 2 in production). Used for per-IP rate limits.
+// Proxies in front of the app. Visitor IPs come from clientIp() (src/ip.js); this is only its fallback.
 app.set('trust proxy', Number(process.env.TRUST_PROXY ?? 1))
 app.disable('x-powered-by')
 const origins = (process.env.CORS_ORIGIN || 'http://localhost:5173,http://localhost:4173').split(',').map((s) => s.trim().replace(/\/+$/, '')).filter(Boolean)
@@ -41,7 +41,7 @@ app.get('/api/health', async (_req, res) => {
 })
 
 // Public: contact and corporate enquiries don't need an account.
-const formLimiter = rateLimit({ windowMs: 60 * 60e3, limit: 30, message: { error: 'Too many submissions. Try again later.' } })
+const formLimiter = limiter({ windowMs: 60 * 60e3, limit: 30, message: { error: 'Too many submissions. Try again later.' } })
 app.post('/api/enquiries', formLimiter, async (req, res) => {
   const b = req.body
   const type = b.type === 'corporate' ? 'corporate' : 'contact'

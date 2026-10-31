@@ -1,6 +1,6 @@
 import { createHash, randomBytes } from 'node:crypto'
 import { Router } from 'express'
-import rateLimit from 'express-rate-limit'
+import { limiter } from '../ip.js'
 import bcrypt from 'bcryptjs'
 import { query } from '../db.js'
 import { endSession, load, publicUser, requireCustomer, revokeAllSessions, startSession } from '../auth.js'
@@ -10,8 +10,8 @@ import { MAX_ADVANCE_DAYS, check, isDate, isEmail, isFuturePickup, isPhone, isTi
 
 export const TRIP_TYPES = ['Airport transfer', 'Railway transfer', 'Hourly rental', 'Outstation one-way', 'Outstation round trip', 'Corporate / custom']
 const r = Router()
-const authLimiter = rateLimit({ windowMs: 15 * 60e3, limit: 30, message: { error: 'Too many attempts. Try again in 15 minutes.' } })
-const bookingLimiter = rateLimit({ windowMs: 60 * 60e3, limit: 30, message: { error: 'Too many bookings in a short time. Please call us.' } })
+const authLimiter = limiter({ windowMs: 15 * 60e3, limit: 30, message: { error: 'Too many attempts. Try again in 15 minutes.' } })
+const bookingLimiter = limiter({ windowMs: 60 * 60e3, limit: 30, message: { error: 'Too many bookings in a short time. Please call us.' } })
 const pw = (v) => (typeof v === 'string' ? v : '')
 const sha256 = (s) => createHash('sha256').update(s).digest('hex')
 
