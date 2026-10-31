@@ -7,7 +7,7 @@ import { tripTypes, vehicleOptions } from '../data/site'
 import { EASE } from '../lib/motion'
 import { useAuth } from '../lib/auth'
 
-export const today = () => new Date().toISOString().slice(0, 10)
+import { lastBookableDate, today } from '../lib/time'
 
 const card = 'rounded-[1.75rem] border border-white/12 bg-midnight/55 p-5 text-white shadow-[0_40px_120px_-30px_rgb(0_0_0/0.7)] backdrop-blur-2xl sm:p-7'
 // Where visitors return after signing in or registering.
@@ -97,7 +97,7 @@ function PlanForm({ className }) {
       </div>
 
       <div className="mt-3 grid grid-cols-2 gap-3">
-        <Field label="Pickup date"><input type="date" min={today()} value={f.date} onChange={set('date')} className="input-dark" /></Field>
+        <Field label="Pickup date"><input type="date" min={today()} max={lastBookableDate()} value={f.date} onChange={set('date')} className="input-dark" /></Field>
         <Field label="Pickup time"><input type="time" value={f.time} onChange={set('time')} className="input-dark" /></Field>
         <Field label="Trip type" wide>
           <select value={f.trip} onChange={set('trip')} className="input-dark">{tripTypes.map((t) => <option key={t}>{t}</option>)}</select>

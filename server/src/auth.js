@@ -69,7 +69,8 @@ function decode(req, kind) {
   }
 }
 
-async function load(req, kind) {
+/** The signed-in user for this context, or null. */
+export async function load(req, kind) {
   const t = decode(req, kind)
   if (!t) return null
   const [u] = await query(

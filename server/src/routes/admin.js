@@ -2,7 +2,7 @@ import { Router } from 'express'
 import rateLimit from 'express-rate-limit'
 import bcrypt from 'bcryptjs'
 import { query } from '../db.js'
-import { STAFF_ROLES, audit, endSession, permissionsFor, publicUser, requireAdmin, revokeAllSessions, startSession } from '../auth.js'
+import { STAFF_ROLES, audit, endSession, load, permissionsFor, publicUser, requireAdmin, revokeAllSessions, startSession } from '../auth.js'
 import { checkPassword } from '../login.js'
 import { check, isDate, isEmail, isPhone, normPhone, str, today } from '../validate.js'
 import { TRIP_TYPES } from './customer.js'
@@ -10,6 +10,8 @@ import { TRIP_TYPES } from './customer.js'
 const r = Router()
 const loginLimiter = rateLimit({ windowMs: 15 * 60e3, limit: 20, message: { error: 'Too many attempts. Try again in 15 minutes.' } })
 const BOOKING_STATUS = ['pending', 'confirmed', 'assigned', 'in_progress', 'completed', 'cancelled']
+// India-time calendar date a booking was made (created_at is stored in UTC).
+const BOOKED_ON = "DATE(CONVERT_TZ(created_at, '+00:00', '+05:30'))"
 const pw = (v) => (typeof v === 'string' ? v : '')
 const me = (u) => ({ ...publicUser(u), permissions: permissionsFor(u.role) })
 
@@ -32,7 +34,10 @@ r.post('/auth/logout', async (req, res) => {
   res.json({ ok: true })
 })
 
-r.get('/auth/me', requireAdmin(), (req, res) => res.json({ user: me(req.user) }))
+r.get('/auth/me', async (req, res) => {
+  const u = await load(req, 'admin')
+  res.json({ user: u ? me(u) : null })
+})
 
 r.post('/auth/password', requireAdmin(), async (req, res) => {
   const next = pw(req.body.newPassword)
@@ -60,35 +65,43 @@ r.get('/stats', requireAdmin('stats:read'), async (_req, res) => {
       (SELECT COUNT(*) FROM bookings) AS bookings,
       (SELECT COUNT(*) FROM bookings WHERE status = 'pending') AS pending,
       (SELECT COUNT(*) FROM bookings WHERE cancel_requested_at IS NOT NULL AND status NOT IN ('cancelled', 'completed')) AS cancel_requests,
-      (SELECT COUNT(*) FROM bookings WHERE pickup_date = CURDATE()) AS today,
+      (SELECT COUNT(*) FROM bookings WHERE pickup_date = ? AND status <> 'cancelled') AS today,
       (SELECT COUNT(*) FROM enquiries WHERE status = 'new') AS new_enquiries,
       (SELECT COUNT(*) FROM users WHERE role = 'CUSTOMER') AS customers,
       (SELECT COUNT(*) FROM vehicles WHERE status = 'active') AS active_vehicles,
-      (SELECT COUNT(*) FROM drivers WHERE status = 'available') AS available_drivers`)
+      (SELECT COUNT(*) FROM drivers WHERE status = 'available') AS available_drivers`, [today()])
   const byStatus = await query('SELECT status, COUNT(*) AS n FROM bookings GROUP BY status')
-  const byDay = await query(`SELECT DATE(created_at) AS day, COUNT(*) AS n FROM bookings
-    WHERE created_at >= CURDATE() - INTERVAL 13 DAY GROUP BY DATE(created_at) ORDER BY day`)
+  const byDay = await query(`SELECT ${BOOKED_ON} AS day, COUNT(*) AS n FROM bookings
+    WHERE ${BOOKED_ON} >= ? GROUP BY day ORDER BY day`, [today(-13)])
   const byTrip = await query('SELECT trip_type, COUNT(*) AS n FROM bookings GROUP BY trip_type ORDER BY n DESC')
   const recent = await query('SELECT id, reference, name, trip_type, pickup_date, status FROM bookings ORDER BY created_at DESC LIMIT 6')
   res.json({ counts, byStatus, byDay, byTrip, recent })
 })
 
 // ---------- Reports ----------
+// basis=booked (default) groups by the India-time date the booking was made; basis=pickup by trip date.
 r.get('/reports', requireAdmin('reports:read'), async (req, res) => {
-  const from = isDate(req.query.from) ? req.query.from : new Date(Date.now() - 29 * 864e5).toISOString().slice(0, 10)
+  const basis = req.query.basis === 'pickup' ? 'pickup' : 'booked'
+  const from = isDate(req.query.from) ? req.query.from : today(-29)
   const to = isDate(req.query.to) ? req.query.to : today()
-  const range = 'pickup_date BETWEEN ? AND ?'
+  const col = basis === 'pickup' ? 'b.pickup_date' : BOOKED_ON.replace(/created_at/g, 'b.created_at')
+  const range = `${col} BETWEEN ? AND ?`
+  const p = [from, to]
   const [totals] = await query(`SELECT COUNT(*) AS bookings,
-      SUM(status = 'completed') AS completed, SUM(status = 'cancelled') AS cancelled,
-      COALESCE(SUM(CASE WHEN status = 'completed' THEN fare END), 0) AS revenue,
-      COUNT(DISTINCT user_id) AS customers
-    FROM bookings WHERE ${range}`, [from, to])
-  const byTrip = await query(`SELECT trip_type AS label, COUNT(*) AS n, COALESCE(SUM(CASE WHEN status = 'completed' THEN fare END), 0) AS revenue
-    FROM bookings WHERE ${range} GROUP BY trip_type ORDER BY n DESC`, [from, to])
-  const byVehicle = await query(`SELECT COALESCE(vehicle_pref, 'Not specified') AS label, COUNT(*) AS n FROM bookings WHERE ${range} GROUP BY label ORDER BY n DESC`, [from, to])
+      COALESCE(SUM(b.status = 'completed'), 0) AS completed,
+      COALESCE(SUM(b.status = 'cancelled'), 0) AS cancelled,
+      COALESCE(SUM(b.status IN ('pending', 'confirmed', 'assigned', 'in_progress')), 0) AS open,
+      COALESCE(SUM(CASE WHEN b.status = 'completed' THEN b.fare END), 0) AS revenue,
+      COALESCE(SUM(CASE WHEN b.status NOT IN ('cancelled', 'completed') THEN b.fare END), 0) AS expected,
+      COUNT(DISTINCT b.user_id) AS customers
+    FROM bookings b WHERE ${range}`, p)
+  const byStatus = await query(`SELECT b.status AS label, COUNT(*) AS n FROM bookings b WHERE ${range} GROUP BY b.status ORDER BY n DESC`, p)
+  const byTrip = await query(`SELECT b.trip_type AS label, COUNT(*) AS n, COALESCE(SUM(CASE WHEN b.status = 'completed' THEN b.fare END), 0) AS revenue
+    FROM bookings b WHERE ${range} GROUP BY b.trip_type ORDER BY n DESC`, p)
+  const byVehicle = await query(`SELECT COALESCE(b.vehicle_pref, 'Not specified') AS label, COUNT(*) AS n FROM bookings b WHERE ${range} GROUP BY label ORDER BY n DESC`, p)
   const byDriver = await query(`SELECT d.name AS label, COUNT(*) AS n FROM bookings b JOIN drivers d ON d.id = b.driver_id
-    WHERE b.${range} AND b.status = 'completed' GROUP BY d.id ORDER BY n DESC LIMIT 10`, [from, to])
-  res.json({ from, to, totals, byTrip, byVehicle, byDriver })
+    WHERE ${range} AND b.status NOT IN ('cancelled') GROUP BY d.id, d.name ORDER BY n DESC LIMIT 10`, p)
+  res.json({ basis, from, to, totals, byStatus, byTrip, byVehicle, byDriver })
 })
 
 // ---------- Bookings ----------
@@ -98,8 +111,10 @@ function bookingFilter(q) {
   if (BOOKING_STATUS.includes(q.status)) { where.push('b.status = ?'); params.push(q.status) }
   if (q.cancel === '1') where.push("b.cancel_requested_at IS NOT NULL AND b.status NOT IN ('cancelled', 'completed')")
   if (TRIP_TYPES.includes(q.trip)) { where.push('b.trip_type = ?'); params.push(q.trip) }
-  if (isDate(q.from)) { where.push('b.pickup_date >= ?'); params.push(q.from) }
-  if (isDate(q.to)) { where.push('b.pickup_date <= ?'); params.push(q.to) }
+  // Date range applies to the pickup date, or to the India-time booking date with basis=booked (as in Reports).
+  const col = q.basis === 'booked' ? BOOKED_ON.replace(/created_at/g, 'b.created_at') : 'b.pickup_date'
+  if (isDate(q.from)) { where.push(`${col} >= ?`); params.push(q.from) }
+  if (isDate(q.to)) { where.push(`${col} <= ?`); params.push(q.to) }
   const s = str(q.q, 80)
   if (s) {
     where.push('(b.reference LIKE ? OR b.name LIKE ? OR b.phone LIKE ? OR b.pickup LIKE ? OR b.dropoff LIKE ?)')
@@ -313,6 +328,12 @@ r.patch('/users/:id', requireAdmin('users:manage'), async (req, res) => {
   if (status === 'disabled') await revokeAllSessions(id)
   await audit(req, 'team.update', 'user', id, { role, status })
   res.json({ ok: true })
+})
+
+// TEMPORARY (remove after reading): which proxy headers reach the API, to pick the real client IP.
+r.get('/debug/ip', requireAdmin('users:manage'), (req, res) => {
+  const pick = ['x-forwarded-for', 'x-real-ip', 'x-vercel-forwarded-for', 'x-vercel-ip-country', 'cf-connecting-ip', 'true-client-ip', 'x-forwarded-host', 'cf-ipcountry', 'via']
+  res.json({ ip: req.ip, ips: req.ips, remote: req.socket.remoteAddress, headers: Object.fromEntries(pick.map((h) => [h, req.get(h) ?? null])) })
 })
 
 r.get('/audit', requireAdmin('audit:read'), async (_req, res) => {

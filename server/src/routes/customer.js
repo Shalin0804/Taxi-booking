@@ -3,10 +3,10 @@ import { Router } from 'express'
 import rateLimit from 'express-rate-limit'
 import bcrypt from 'bcryptjs'
 import { query } from '../db.js'
-import { endSession, publicUser, requireCustomer, revokeAllSessions, startSession } from '../auth.js'
+import { endSession, load, publicUser, requireCustomer, revokeAllSessions, startSession } from '../auth.js'
 import { checkPassword } from '../login.js'
 import { sendMail } from '../mailer.js'
-import { check, isDate, isEmail, isPhone, isTime, normPhone, str, today } from '../validate.js'
+import { MAX_ADVANCE_DAYS, check, isDate, isEmail, isFuturePickup, isPhone, isTime, normPhone, str, today } from '../validate.js'
 
 export const TRIP_TYPES = ['Airport transfer', 'Railway transfer', 'Hourly rental', 'Outstation one-way', 'Outstation round trip', 'Corporate / custom']
 const r = Router()
@@ -55,7 +55,11 @@ r.post('/auth/logout', async (req, res) => {
   res.json({ ok: true })
 })
 
-r.get('/auth/me', requireCustomer, (req, res) => res.json({ user: publicUser(req.user) }))
+// "Who is signed in?" is a normal question for visitors, so it answers { user: null } rather than a 401.
+r.get('/auth/me', async (req, res) => {
+  const u = await load(req, 'customer')
+  res.json({ user: u ? publicUser(u) : null })
+})
 
 r.post('/auth/forgot-password', authLimiter, async (req, res) => {
   const email = str(req.body.email, 190).toLowerCase()
@@ -126,13 +130,15 @@ r.post('/bookings', bookingLimiter, requireCustomer, async (req, res) => {
     // Passenger contact defaults to the account holder; it can differ when booking for someone else.
     name: str(b.name, 120) || req.user.name, phone: normPhone(b.phone) || req.user.phone || '', email: str(b.email, 190) || req.user.email,
   }
+  // Dates and times are India time. The time rule only applies once the date itself is valid.
+  const dateOk = isDate(f.date) && f.date >= today() && f.date <= today(MAX_ADVANCE_DAYS)
   check({
     trip: [TRIP_TYPES.includes(f.trip), 'Choose a trip type'],
     pickup: [f.pickup.length > 1, 'Enter a pickup location'],
     drop: [f.trip === 'Hourly rental' || f.drop.length > 1, 'Enter a destination'],
-    date: [isDate(f.date) && f.date >= today(), 'Choose a pickup date that is today or later'],
-    time: [isTime(f.time), 'Choose a pickup time'],
-    returnDate: [!f.returnDate || (isDate(f.returnDate) && f.returnDate >= f.date), 'Return must be on or after the pickup date'],
+    date: [dateOk, `Choose a pickup date between today and ${MAX_ADVANCE_DAYS} days ahead`],
+    time: [isTime(f.time) && (!dateOk || isFuturePickup(f.date, f.time)), 'That time has already passed. Choose a later pickup time'],
+    returnDate: [!f.returnDate || (isDate(f.returnDate) && f.returnDate >= f.date && f.returnDate <= today(MAX_ADVANCE_DAYS + 30)), 'Return must be on or after the pickup date, within the booking window'],
     name: [f.name.length >= 2, 'Enter the passenger name'],
     phone: [isPhone(f.phone), 'Enter a 10-digit mobile number'],
     email: [isEmail(f.email), 'Enter a valid email'],

@@ -5,6 +5,7 @@ import { readFileSync, writeFileSync, mkdirSync } from 'node:fs'
 import { pageMeta, fullTitle } from '../src/data/seo.js'
 import { SITE_URL } from '../src/data/site.js'
 
+const PRIVATE = ['/login', '/register', '/forgot-password', '/reset-password', '/book', '/my-account']
 const esc = (s) => s.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;')
 const base = readFileSync('dist/index.html', 'utf8')
 
@@ -26,6 +27,8 @@ for (const [path, m] of Object.entries(pageMeta)) {
   ].join('\n    ')
   let html = base.replace(/<title data-static[\s\S]*?<meta data-static name="description"[^>]*>/, tags)
   if (html === base) throw new Error('SEO markers missing from dist/index.html')
+  // Account and booking pages are private: keep them out of search results.
+  if (PRIVATE.some((p) => path === p || path.startsWith(p + '/'))) html = html.replace('</head>', '  <meta name="robots" content="noindex, nofollow" />\n  </head>')
   // The hero preload only belongs on the home page.
   if (path !== '/') html = html.replace(/\s*<link rel="preload" as="image"[^>]*>/, '')
   // Inner pages: preload their own hero so it isn't discovered only after the route chunk loads.

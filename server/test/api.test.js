@@ -92,7 +92,7 @@ test('customer register, login by email or phone, httpOnly cookie, logout', asyn
   assert.equal((await client().call('/api/auth/login', { method: 'POST', body: { identifier: 'ghost@example.test', password: 'nope-nope' } })).data.error, wrong.data.error, 'same message for unknown account')
 
   await byPhone.call('/api/auth/logout', { method: 'POST' })
-  assert.equal((await byPhone.call('/api/auth/me')).status, 401, 'logout ends the session')
+  assert.equal((await byPhone.call('/api/auth/me')).data.user, null, 'logout ends the session')
 })
 
 test('CSRF: state-changing requests without the header or from a foreign origin are rejected', async () => {
@@ -114,6 +114,16 @@ test('bookings require a customer session; ownership comes from the session', as
   const b = await customer('other')
   const past = await a.call('/api/bookings', { method: 'POST', body: booking({ date: day(-1) }) })
   assert.equal(past.status, 400)
+  // India-time rules: no time earlier than now today, nothing beyond the booking window.
+  const istNow = new Date(Date.now() + 5.5 * 3600e3)
+  if (istNow.getUTCHours() >= 1) {
+    const earlier = `${String(istNow.getUTCHours() - 1).padStart(2, '0')}:00`
+    const r = await a.call('/api/bookings', { method: 'POST', body: booking({ date: istNow.toISOString().slice(0, 10), time: earlier }) })
+    assert.equal(r.status, 400, 'a pickup time that has passed today is rejected')
+    assert.ok(r.data.fields.time)
+  }
+  assert.equal((await a.call('/api/bookings', { method: 'POST', body: booking({ date: '2099-01-01' }) })).status, 400, 'far-future date rejected')
+  assert.equal((await a.call('/api/bookings', { method: 'POST', body: booking({ date: day(181) }) })).status, 400)
   // A user_id in the body must be ignored.
   const made = await a.call('/api/bookings', { method: 'POST', body: booking({ user_id: b.id, userId: b.id }) })
   assert.equal(made.status, 201)
@@ -131,7 +141,7 @@ test('bookings require a customer session; ownership comes from the session', as
 
   // Staff accounts can't book through the customer API, and customer cookies can't reach admin APIs.
   assert.equal((await a.call('/api/admin/bookings')).status, 401)
-  assert.equal((await a.call('/api/admin/auth/me')).status, 401)
+  assert.equal((await a.call('/api/admin/auth/me')).data.user, null)
   const cancel = await a.call(`/api/bookings/${ref}/cancel`, { method: 'PATCH' })
   assert.equal(cancel.data.outcome, 'cancelled')
 })
@@ -146,7 +156,7 @@ test('admin login is separate: customers cannot use it, staff cannot use custome
   // An admin session doesn't count as a customer session.
   assert.equal((await sa.call('/api/bookings')).status, 401)
   await sa.call('/api/admin/auth/logout', { method: 'POST' })
-  assert.equal((await sa.call('/api/admin/auth/me')).status, 401)
+  assert.equal((await sa.call('/api/admin/auth/me')).data.user, null)
 })
 
 test('role permissions are enforced on the server', async () => {
@@ -203,7 +213,7 @@ test('team management: SUPER_ADMIN creates staff; disabling revokes their sessio
   const s = client()
   assert.equal((await s.call('/api/admin/auth/login', { method: 'POST', body: { email, password: 'newstaffpass1' } })).status, 200)
   await sa.call(`/api/admin/users/${created.data.row.id}`, { method: 'PATCH', body: { status: 'disabled' } })
-  assert.equal((await s.call('/api/admin/auth/me')).status, 401, 'disabled staff lose access immediately')
+  assert.equal((await s.call('/api/admin/auth/me')).data.user, null, 'disabled staff lose access immediately')
   assert.equal((await s.call('/api/admin/auth/login', { method: 'POST', body: { email, password: 'newstaffpass1' } })).status, 401)
 })
 
@@ -211,11 +221,11 @@ test('expired and revoked sessions are rejected', async () => {
   const c = await customer('expiry')
   assert.equal((await c.call('/api/auth/me')).status, 200)
   await query("UPDATE sessions SET expires_at = UTC_TIMESTAMP() - INTERVAL 1 MINUTE WHERE user_id = ? AND kind = 'customer'", [c.id])
-  assert.equal((await c.call('/api/auth/me')).status, 401)
+  assert.equal((await c.call('/api/auth/me')).data.user, null)
   // A tampered token is rejected too.
   const t = client()
   t.jar.set('ttt_customer', 'eyJhbGciOiJIUzI1NiJ9.eyJzaWQiOiJ4Iiwic3ViIjoxfQ.forged')
-  assert.equal((await t.call('/api/auth/me')).status, 401)
+  assert.equal((await t.call('/api/auth/me')).data.user, null)
 })
 
 test('account lockout after repeated failures', async () => {
@@ -240,7 +250,7 @@ test('password reset: single-use, expiring, revokes sessions', async () => {
 
   assert.equal((await client().call('/api/auth/reset-password', { method: 'POST', body: { token, password: 'brandnewpass' } })).status, 200)
   assert.equal((await client().call('/api/auth/reset-password', { method: 'POST', body: { token, password: 'anotherpass1' } })).status, 400, 'token is single-use')
-  assert.equal((await c.call('/api/auth/me')).status, 401, 'existing sessions revoked')
+  assert.equal((await c.call('/api/auth/me')).data.user, null, 'existing sessions revoked')
   assert.equal((await client().call('/api/auth/login', { method: 'POST', body: { identifier: c.email, password: 'brandnewpass' } })).status, 200)
   await query('UPDATE password_resets SET expires_at = UTC_TIMESTAMP() - INTERVAL 1 MINUTE')
   assert.equal((await client().call('/api/auth/reset-password', { method: 'POST', body: { token: 'f'.repeat(64), password: 'whatever12' } })).status, 400)

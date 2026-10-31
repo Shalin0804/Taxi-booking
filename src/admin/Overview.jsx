@@ -4,6 +4,7 @@ import { CalendarDays, Car, Clock, Inbox, UserRound, Users } from 'lucide-react'
 import StatusBadge, { statusLabel } from '../components/StatusBadge'
 import { DataTable, PageHeader, date, useApi } from './kit'
 import { EASE } from '../lib/motion'
+import { today } from '../lib/time'
 import { ADMIN_BASE as A } from './base'
 import { useAdmin } from './adminAuth'
 
@@ -72,7 +73,7 @@ export default function Overview() {
 function DayChart({ rows }) {
   // Fill missing days with zero so the axis is continuous.
   const days = Array.from({ length: 14 }, (_, i) => {
-    const d = new Date(Date.now() - (13 - i) * 864e5).toISOString().slice(0, 10)
+    const d = today(i - 13)
     return { d, n: rows?.find((r) => String(r.day).slice(0, 10) === d)?.n || 0 }
   })
   const max = Math.max(1, ...days.map((x) => x.n))

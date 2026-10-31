@@ -6,7 +6,7 @@ import Seo from '../components/Seo'
 import LocationInput from '../components/LocationInput'
 import { Page, Picture } from '../components/ui'
 import { Field, SubmitButton, SubmitResult, isEmail, isPhone, useSubmit } from '../components/forms'
-import { today } from '../components/BookingWidget'
+import { MAX_ADVANCE_DAYS, lastBookableDate, nowTime, today } from '../lib/time'
 import { submitBooking } from '../lib/api'
 import { company, fleet, tripTypes, vehicleOptions } from '../data/site'
 import { EASE, getLenis } from '../lib/motion'
@@ -58,7 +58,9 @@ function BookFlow() {
     if (i === 2) {
       if (!f.date) e.date = 'Choose a pickup date'
       else if (f.date < today()) e.date = 'Pickup date cannot be in the past'
+      else if (f.date > lastBookableDate()) e.date = `You can book up to ${MAX_ADVANCE_DAYS} days ahead. Call us for later trips.`
       if (!f.time) e.time = 'Choose a pickup time'
+      else if (f.date === today() && f.time <= nowTime()) e.time = 'That time has already passed. Choose a later pickup time'
       if (roundTrip && f.returnDate && f.returnDate < f.date) e.returnDate = 'Return must be on or after the pickup date'
     }
     if (i === 3 && !f.vehicle) e.vehicle = 'Choose a vehicle, or pick "No preference"'
@@ -176,7 +178,7 @@ function BookFlow() {
 
                     {step === 2 && (
                       <div className="grid gap-5 sm:grid-cols-2">
-                        <Field label="Pickup date" error={errors.date}><input type="date" min={today()} className="input" value={f.date} onChange={set('date')} aria-invalid={!!errors.date} /></Field>
+                        <Field label="Pickup date" error={errors.date}><input type="date" min={today()} max={lastBookableDate()} className="input" value={f.date} onChange={set('date')} aria-invalid={!!errors.date} /></Field>
                         <Field label="Pickup time" error={errors.time}><input type="time" className="input" value={f.time} onChange={set('time')} aria-invalid={!!errors.time} /></Field>
                         {roundTrip && (
                           <Field label="Return date (optional)" error={errors.returnDate}><input type="date" min={f.date || today()} className="input" value={f.returnDate} onChange={set('returnDate')} /></Field>

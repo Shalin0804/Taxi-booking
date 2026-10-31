@@ -17,6 +17,9 @@ export const pool = mysql.createPool({
   decimalNumbers: true,
 })
 
+// Timestamps are stored and compared in UTC; India-time conversions happen explicitly in SQL.
+pool.pool.on('connection', (conn) => conn.query("SET time_zone = '+00:00'"))
+
 export const query = async (sql, params = []) => (await pool.query(sql, params))[0]
 
 export async function migrate() {
