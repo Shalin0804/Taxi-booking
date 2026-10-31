@@ -43,14 +43,14 @@ export function useScrollFx(ref, deps = []) {
         const items = group.querySelectorAll(':scope > [data-reveal]')
         gsap.to(items, {
           opacity: 1, y: 0, duration: 1, ease: 'expo.out', stagger: 0.09,
-          scrollTrigger: { trigger: group, start: 'top 86%', once: true },
+          scrollTrigger: { trigger: group, start: 'top 96%', once: true },
         })
       })
       root.querySelectorAll('[data-reveal]').forEach((el) => {
         if (el.parentElement?.hasAttribute('data-stagger')) return
         gsap.to(el, {
           opacity: 1, y: 0, duration: 1.1, ease: 'expo.out',
-          scrollTrigger: { trigger: el, start: 'top 88%', once: true },
+          scrollTrigger: { trigger: el, start: 'top 96%', once: true },
         })
       })
       root.querySelectorAll('[data-mask]').forEach((el) => {

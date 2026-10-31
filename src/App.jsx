@@ -1,4 +1,4 @@
-import { lazy, Suspense } from 'react'
+import { Suspense } from 'react'
 import { BrowserRouter, Navigate, Routes, Route, useLocation } from 'react-router-dom'
 import { AnimatePresence, LazyMotion, domAnimation, m } from 'framer-motion'
 import Navbar from './components/Navbar'
@@ -6,23 +6,25 @@ import Footer from './components/Footer'
 import Home from './pages/Home'
 import { EASE, scrollToTop } from './lib/motion'
 import { AuthProvider } from './lib/auth'
+import { lazyPage } from './lib/lazy'
+import { LoadingScreen, PageErrorBoundary } from './components/Loading'
 import { ADMIN_BASE } from './admin/base'
 
-const About = lazy(() => import('./pages/About'))
-const Services = lazy(() => import('./pages/Services'))
-const ServiceDetail = lazy(() => import('./pages/ServiceDetail'))
-const Fleet = lazy(() => import('./pages/Fleet'))
-const Corporate = lazy(() => import('./pages/Corporate'))
-const Contact = lazy(() => import('./pages/Contact'))
-const Book = lazy(() => import('./pages/Book'))
-const NotFound = lazy(() => import('./pages/NotFound'))
-const auth = (name) => lazy(() => import('./pages/AuthPages').then((mod) => ({ default: mod[name] })))
+const About = lazyPage(() => import('./pages/About'))
+const Services = lazyPage(() => import('./pages/Services'))
+const ServiceDetail = lazyPage(() => import('./pages/ServiceDetail'))
+const Fleet = lazyPage(() => import('./pages/Fleet'))
+const Corporate = lazyPage(() => import('./pages/Corporate'))
+const Contact = lazyPage(() => import('./pages/Contact'))
+const Book = lazyPage(() => import('./pages/Book'))
+const NotFound = lazyPage(() => import('./pages/NotFound'))
+const auth = (name) => lazyPage(() => import('./pages/AuthPages').then((mod) => ({ default: mod[name] })))
 const Login = auth('Login')
 const Register = auth('Register')
 const ForgotPassword = auth('ForgotPassword')
 const ResetPassword = auth('ResetPassword')
-const MyAccount = lazy(() => import('./pages/MyAccount'))
-const AdminApp = lazy(() => import('./admin/AdminApp'))
+const MyAccount = lazyPage(() => import('./pages/MyAccount'))
+const AdminApp = lazyPage(() => import('./admin/AdminApp'))
 
 function AnimatedRoutes() {
   const location = useLocation()
@@ -34,7 +36,7 @@ function AnimatedRoutes() {
         animate={{ opacity: 1, transition: { duration: 0.6, ease: EASE } }}
         exit={{ opacity: 0, transition: { duration: 0.35, ease: EASE } }}
       >
-        <Suspense fallback={<div className="min-h-screen bg-midnight" />}>
+        <Suspense fallback={<LoadingScreen />}>
           <Routes location={location}>
             <Route path="/" element={<Home />} />
             <Route path="/home" element={<Home />} />
@@ -65,7 +67,7 @@ function Shell() {
   // The admin portal lives only at this unlinked URL, with its own layout and session.
   if (pathname === ADMIN_BASE || pathname.startsWith(ADMIN_BASE + '/')) {
     return (
-      <Suspense fallback={<div className="min-h-screen bg-midnight" />}>
+      <Suspense fallback={<LoadingScreen />}>
         <AdminApp />
       </Suspense>
     )
@@ -87,7 +89,9 @@ export default function App() {
         Skip to content
       </a>
       <AuthProvider>
-        <Shell />
+        <PageErrorBoundary>
+          <Shell />
+        </PageErrorBoundary>
       </AuthProvider>
     </BrowserRouter>
     </LazyMotion>

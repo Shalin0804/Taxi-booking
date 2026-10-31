@@ -7,6 +7,7 @@ import { AdminAuthProvider, useAdmin } from './adminAuth'
 import Sidebar from './Sidebar'
 import { ADMIN_BASE } from './base'
 import { EASE } from '../lib/motion'
+import { LoadingScreen } from '../components/Loading'
 import { ToastProvider } from './kit'
 import AdminLogin from './AdminLogin'
 import Overview from './Overview'
@@ -47,7 +48,7 @@ function Portal() {
   useEffect(() => setOpen(false), [pathname])
   useEffect(() => { document.title = 'Admin | TTT Cabs' }, [pathname])
 
-  if (!ready) return <div className="min-h-screen bg-[#050d19]" />
+  if (!ready) return <LoadingScreen />
   const sub = pathname.slice(ADMIN_BASE.length).replace(/^\/|\/$/g, '')
   // Signed out: the login lives at the base URL; any deeper admin URL redirects there.
   if (!user) return sub ? <Navigate to={ADMIN_BASE} replace /> : <AdminLogin />

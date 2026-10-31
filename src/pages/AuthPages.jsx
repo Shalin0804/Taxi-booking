@@ -8,6 +8,7 @@ import { Field, isEmail, isPhone } from '../components/forms'
 import { useAuth } from '../lib/auth'
 import { request, safeNext } from '../lib/api'
 import { EASE } from '../lib/motion'
+import { LoadingScreen } from '../components/Loading'
 
 /** Keeps ?next= when moving between login, register and forgot-password. */
 const withNext = (path, next) => (next ? `${path}?next=${encodeURIComponent(next)}` : path)
@@ -262,7 +263,7 @@ export function ResetPassword() {
 /** Wraps customer-only pages: visitors are sent to /login and returned here afterwards. */
 export function RequireCustomer({ children }) {
   const { user, ready } = useAuth()
-  if (!ready) return <div className="min-h-screen bg-midnight" />
+  if (!ready) return <LoadingScreen />
   if (!user) {
     const here = window.location.pathname + window.location.search + window.location.hash
     return <Navigate to={`/login?next=${encodeURIComponent(here)}`} replace />
