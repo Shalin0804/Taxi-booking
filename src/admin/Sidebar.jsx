@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { NavLink, useLocation } from 'react-router-dom'
-import { ChevronDown, ChevronUp, LogOut } from 'lucide-react'
+import { ChevronDown, ChevronUp, LogOut, X } from 'lucide-react'
 import Logo from '../components/Logo'
 import { roleLabel, useAdmin } from './adminAuth'
 import { ADMIN_BASE } from './base'
@@ -10,7 +10,7 @@ const GROUPS = ['Overview', 'Operations', 'Fleet & pricing', 'Administration']
 const initials = (name) => name.split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0].toUpperCase()).join('')
 
 /** Admin sidebar: grouped links, a live pending-bookings badge, and scroll buttons when the menu overflows. */
-export default function Sidebar({ items }) {
+export default function Sidebar({ items, onClose }) {
   const { user, logout, can } = useAdmin()
   const { pathname } = useLocation()
   const navRef = useRef(null)
@@ -50,7 +50,11 @@ export default function Sidebar({ items }) {
 
       <div className="relative flex items-center justify-between px-5 pb-5 pt-6">
         <Logo />
-        <span className="rounded-full border border-gold/30 bg-gold/10 px-2 py-0.5 text-[10px] font-semibold text-gold">Admin</span>
+        {onClose ? (
+          <button onClick={onClose} aria-label="Close admin menu" className="grid h-9 w-9 place-items-center rounded-full text-white/80 hover:bg-white/10"><X className="h-5 w-5" /></button>
+        ) : (
+          <span className="rounded-full border border-gold/30 bg-gold/10 px-2 py-0.5 text-[10px] font-semibold text-gold">Admin</span>
+        )}
       </div>
 
       <div className="relative min-h-0 flex-1">

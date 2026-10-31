@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Navigate, Route, Routes, useLocation } from 'react-router-dom'
 import { AnimatePresence, m } from 'framer-motion'
-import { BarChart3, Building2, CalendarDays, Car, Inbox, LayoutDashboard, Mail, Menu, Settings as SettingsIcon, ShieldOff, Tags, UserCog, UserRound, Users, X } from 'lucide-react'
+import { BarChart3, Building2, CalendarDays, Car, Inbox, LayoutDashboard, Mail, Menu, Settings as SettingsIcon, ShieldOff, Tags, UserCog, UserRound, Users } from 'lucide-react'
 import Logo from '../components/Logo'
 import { AdminAuthProvider, useAdmin } from './adminAuth'
 import Sidebar from './Sidebar'
@@ -69,8 +69,7 @@ function Portal() {
             <>
               <m.div className="fixed inset-0 z-40 bg-midnight/50 lg:hidden" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setOpen(false)} />
               <m.aside className="fixed inset-y-0 left-0 z-50 w-72 lg:hidden" initial={{ x: '-100%' }} animate={{ x: 0 }} exit={{ x: '-100%' }} transition={{ duration: 0.4, ease: EASE }}>
-                <button onClick={() => setOpen(false)} className="absolute right-3 top-5 z-10 grid h-9 w-9 place-items-center rounded-full text-white hover:bg-white/10" aria-label="Close admin menu"><X className="h-5 w-5" /></button>
-                {sidebar}
+                <Sidebar items={items} onClose={() => setOpen(false)} />
               </m.aside>
             </>
           )}
