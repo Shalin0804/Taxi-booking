@@ -54,7 +54,7 @@ export function useScrollFx(ref, deps = []) {
         })
       })
       root.querySelectorAll('[data-mask]').forEach((el) => {
-        const tl = gsap.timeline({ scrollTrigger: { trigger: el, start: 'top 85%', once: true } })
+        const tl = gsap.timeline({ scrollTrigger: { trigger: el, start: 'top bottom-=60', once: true } })
         tl.to(el, { clipPath: 'inset(0% 0 0 0)', duration: 1.4, ease: 'expo.inOut' })
         const inner = el.querySelector('img')
         if (inner) tl.from(inner, { scale: 1.25, duration: 1.8, ease: 'expo.out' }, 0)
