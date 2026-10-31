@@ -32,8 +32,8 @@ The API creates every table on its first start.
    | `MAIL_FROM` | optional, e.g. `TTT Cabs <no-reply@tttcabs.com>` |
 
    `JWT_SECRET` is generated for you. `NODE_ENV=production`, `DB_SSL=true` and `TRUST_PROXY=2` are already set.
-3. **The service name must be `tttcabs-api`**, so its URL is `https://tttcabs-api.onrender.com`, the address `vercel.json` forwards to. If Render gives you a different URL, change it in `vercel.json` and push.
-4. Check `https://tttcabs-api.onrender.com/api/health`. It should return `{"ok":true}`.
+3. The live API is `https://tttcabs-api-jkkn.onrender.com`, the address `vercel.json` forwards `/api` to. If the Render URL ever changes, update `vercel.json` and push.
+4. Check `https://tttcabs-api-jkkn.onrender.com/api/health`. It should return `{"ok":true}`.
 5. **Create the first SUPER_ADMIN.** There is no admin sign-up page. Run this once, either in the Render **Shell** (paid plans) or on your computer from `server/` with `DATABASE_URL` and `DB_SSL=true` in `server/.env`:
    ```
    ADMIN_EMAIL=you@yourdomain.com ADMIN_PASSWORD='a-long-unique-password' ADMIN_NAME='Your Name' npm run create-admin

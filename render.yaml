@@ -1,7 +1,7 @@
 # Render Blueprint for the API. In Render: New > Blueprint > pick this repo.
 services:
   - type: web
-    name: tttcabs-api          # gives https://tttcabs-api.onrender.com (must match vercel.json)
+    name: tttcabs-api          # live at https://tttcabs-api-jkkn.onrender.com (must match vercel.json)
     runtime: node
     rootDir: server
     plan: free
